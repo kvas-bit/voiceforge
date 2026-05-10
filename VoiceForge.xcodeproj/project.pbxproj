@@ -29,6 +29,7 @@
 		A2163D7102A36F8DDBB7AFF3 /* VoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C807671A433B1E9BD4E03178 /* VoicesView.swift */; };
 		A9550CF98225340A1E4E259D /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AAC10C0BC12035DC6FAEEBC /* Models.swift */; };
 		B01731D37A4D9A19189BD008 /* SpeechGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D3C70E038FE4E70ACC7BB4 /* SpeechGenerationService.swift */; };
+		B24459578B6EF305BA864841 /* DockTileIconCompositor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C37359DF6C9EA946C607A54B /* DockTileIconCompositor.swift */; };
 		B432BAD54E3FFC4AF83B63C3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C292E59F893882DCF58D6F8 /* Assets.xcassets */; };
 		BC0E1218CBCEC99DE1E6D325 /* VoiceForgeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C488DE43D976B57D05F5E606 /* VoiceForgeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -111,6 +112,7 @@
 		9C292E59F893882DCF58D6F8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDockView.swift; sourceTree = "<group>"; };
 		B830FC8CC13371CD300CB9EC /* VoiceForge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceForge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C37359DF6C9EA946C607A54B /* DockTileIconCompositor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockTileIconCompositor.swift; sourceTree = "<group>"; };
 		C807671A433B1E9BD4E03178 /* VoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesView.swift; sourceTree = "<group>"; };
 		CB99F9193B30D4BD26C8F953 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VoiceForgeCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -236,6 +238,7 @@
 			children = (
 				D34E427F5EE6F70F05417986 /* AppViewModel.swift */,
 				5B6EDE041091B2DA33A10207 /* DockApplicationIconUpdater.swift */,
+				C37359DF6C9EA946C607A54B /* DockTileIconCompositor.swift */,
 				64277028E663E8C2EC5B4AE3 /* HistoryView.swift */,
 				9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */,
 				CB99F9193B30D4BD26C8F953 /* RootView.swift */,
@@ -394,6 +397,7 @@
 			files = (
 				DC5F44E209E069E0910C8086 /* AppViewModel.swift in Sources */,
 				93A1D2595CCFA609BE19437C /* DockApplicationIconUpdater.swift in Sources */,
+				B24459578B6EF305BA864841 /* DockTileIconCompositor.swift in Sources */,
 				05311D5344EE4E723B10A598 /* HistoryView.swift in Sources */,
 				89AA3F5B0C469C88A54E3E62 /* PlaybackDockView.swift in Sources */,
 				542573BA27F0523F3A196A24 /* PromptTextEditor.swift in Sources */,

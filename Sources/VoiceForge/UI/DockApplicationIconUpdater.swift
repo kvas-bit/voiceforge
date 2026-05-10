@@ -32,7 +32,10 @@ enum DockApplicationIconUpdater {
     }
 
     private static func imageForAppearance(_ prefersDark: Bool) -> NSImage? {
-        NSImage(named: prefersDark ? "DockIconDark" : "DockIconLight")
+        DockTileIconCompositor.polishedDockIcon(
+            assetName: prefersDark ? "DockIconDark" : "DockIconLight",
+            prefersDark: prefersDark
+        )
     }
 
     @MainActor
