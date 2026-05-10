@@ -46,46 +46,86 @@ struct StudioView: View {
     }
 
     private var referenceCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Reference voice", systemImage: "person.wave.2")
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-                if let preset = viewModel.presets.first(where: { $0.id == viewModel.selectedPresetID }) {
-                    Text("From preset \"\(preset.name)\"")
-                        .font(.system(size: 11, weight: .medium))
+        let preset = viewModel.presets.first { $0.id == viewModel.selectedPresetID }
+        let hasReference = !viewModel.referenceAudioPath.isEmpty
+        let displayName: String = {
+            if let preset { return preset.name }
+            if hasReference {
+                return URL(fileURLWithPath: viewModel.referenceAudioPath)
+                    .deletingPathExtension()
+                    .lastPathComponent
+            }
+            return "No voice selected"
+        }()
+        let detail: String = {
+            if preset != nil { return "Saved voice preset" }
+            if hasReference { return "Loose reference clip" }
+            return "Open Voices to add or pick one"
+        }()
+
+        return HStack(spacing: 14) {
+            Circle()
+                .fill(VoiceForgeTheme.accentSoft)
+                .frame(width: 42, height: 42)
+                .overlay(
+                    Image(systemName: hasReference ? "waveform" : "person.crop.circle.dashed")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(VoiceForgeTheme.accent)
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Label("Reference voice", systemImage: "person.wave.2")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        .labelStyle(.titleAndIcon)
                 }
+                Text(displayName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                    .lineLimit(1)
             }
 
-            HStack(alignment: .top, spacing: 12) {
-                VoiceForgeField(title: "Reference audio", caption: "Use a clean clip under 30 seconds.") {
-                    TextField("Path to reference audio", text: $viewModel.referenceAudioPath)
-                        .textFieldStyle(.plain)
-                        .accessibilityIdentifier("referenceAudioPathField")
-                        .onChange(of: viewModel.referenceAudioPath) { _, _ in
-                            viewModel.persistReferenceFields()
-                        }
+            Spacer(minLength: 8)
+
+            if hasReference {
+                Button {
+                    let url = URL(fileURLWithPath: viewModel.referenceAudioPath)
+                    try? viewModel.audioPlayer.load(url: url)
+                    viewModel.audioPlayer.togglePlayback()
+                } label: {
+                    Image(systemName: viewModel.audioPlayer.isPlaying ? "pause.circle" : "play.circle")
+                        .font(.system(size: 20))
                 }
-                VStack {
-                    Spacer().frame(height: 18)
-                    Button("Choose…") { viewModel.chooseReferenceAudio() }
-                        .buttonStyle(VoiceForgeSecondaryButtonStyle())
-                        .accessibilityIdentifier("chooseAudioButton")
-                }
+                .buttonStyle(.borderless)
+                .help("Preview reference clip")
+                .accessibilityIdentifier("studioPreviewVoiceButton")
             }
 
-            VoiceForgeField(title: "Reference transcript", caption: "Match the spoken words in the clip closely.") {
-                TextField("Reference transcript", text: $viewModel.referenceText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(2...5)
-                    .accessibilityIdentifier("referenceTextField")
-                    .onChange(of: viewModel.referenceText) { _, _ in
-                        viewModel.persistReferenceFields()
+            Menu {
+                ForEach(viewModel.presets) { preset in
+                    Button(preset.name) {
+                        viewModel.selectedPresetID = preset.id
+                        viewModel.applyPreset(preset)
                     }
+                }
+                if !viewModel.presets.isEmpty {
+                    Divider()
+                }
+                Button("Manage voices…") {
+                    viewModel.destination = .voices
+                }
+            } label: {
+                Label("Choose voice", systemImage: "chevron.up.chevron.down")
             }
+            .menuStyle(.borderlessButton)
+            .frame(maxWidth: 150)
+            .accessibilityIdentifier("studioVoicePickerMenu")
         }
-        .padding(18)
+        .padding(14)
         .voiceForgePanel(fill: VoiceForgeTheme.panel)
     }
 
