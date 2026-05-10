@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 #if canImport(VoiceForgeCore)
 import VoiceForgeCore
@@ -52,7 +53,8 @@ struct HistoryView: View {
                         draftName: $draftName,
                         commitRename: { commitRename(for: item) },
                         beginRename: { beginRename(for: item) },
-                        togglePlay: { viewModel.togglePlayHistory(item) }
+                        togglePlay: { viewModel.togglePlayHistory(item) },
+                        downloadToDownloads: { viewModel.downloadHistoryItemToDownloads(item) }
                     )
                     .tag(item.id)
                     .contextMenu {
@@ -66,6 +68,9 @@ struct HistoryView: View {
                         Button("Reveal in Finder") {
                             let url = URL(fileURLWithPath: item.outputPath)
                             NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                        Button("Download to Downloads") {
+                            viewModel.downloadHistoryItemToDownloads(item)
                         }
                         Divider()
                         Button("Delete", role: .destructive) {
@@ -185,6 +190,14 @@ struct HistoryView: View {
                     }
                     .buttonStyle(VoiceForgeSecondaryButtonStyle())
 
+                    Button {
+                        viewModel.downloadHistoryItemToDownloads(item)
+                    } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                    .accessibilityIdentifier("historyDetailDownloadButton")
+
                     Button(role: .destructive) {
                         viewModel.deleteHistory(item)
                         selectedID = nil
@@ -225,6 +238,7 @@ private struct HistoryRow: View {
     let commitRename: () -> Void
     let beginRename: () -> Void
     let togglePlay: () -> Void
+    let downloadToDownloads: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -238,6 +252,15 @@ private struct HistoryRow: View {
             .buttonStyle(.plain)
             .help(isPlaying ? "Pause" : "Play")
             .accessibilityIdentifier("historyRowPlayButton-\(item.id.uuidString)")
+
+            Button(action: downloadToDownloads) {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(VoiceForgeTheme.secondaryText)
+            }
+            .buttonStyle(.plain)
+            .help("Copy WAV to Downloads")
+            .accessibilityIdentifier("historyRowDownloadButton-\(item.id.uuidString)")
 
             VStack(alignment: .leading, spacing: 4) {
                 if isRenaming {

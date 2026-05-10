@@ -393,6 +393,68 @@ final class AppViewModel: ObservableObject {
         togglePlayHistory(item)
     }
 
+    /// Copies the generation’s WAV into the user’s **Downloads** folder (does not remove
+    /// the canonical render under Application Support). Reveals the new file in Finder.
+    func downloadHistoryItemToDownloads(_ item: GenerationHistoryItem) {
+        generationError = ""
+        let source = URL(fileURLWithPath: item.outputPath)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            generationError = "This audio file is missing from disk."
+            return
+        }
+        guard let downloadsDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            generationError = "Could not open your Downloads folder."
+            return
+        }
+        let stem = Self.downloadsSafeFileStem(for: item)
+        let destination = Self.uniqueFileURL(directory: downloadsDirectory, stem: stem, extension: "wav")
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+        } catch {
+            generationError = error.localizedDescription
+        }
+    }
+
+    private static func downloadsSafeFileStem(for item: GenerationHistoryItem) -> String {
+        var stem = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if stem.isEmpty {
+            stem = GenerationHistoryItem.autoName(from: item.sourceText).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if stem.isEmpty { stem = "VoiceForge" }
+
+        let banned = CharacterSet(charactersIn: #"\/:*?"<>|"#)
+        var sanitized = ""
+        for ch in stem {
+            if ch.unicodeScalars.contains(where: { banned.contains($0) }) {
+                sanitized.append("_")
+            } else {
+                sanitized.append(ch)
+            }
+        }
+        stem = sanitized.trimmingCharacters(in: .whitespacesAndNewlines)
+        while stem.contains("__") {
+            stem = stem.replacingOccurrences(of: "__", with: "_")
+        }
+
+        if stem.isEmpty { stem = "VoiceForge" }
+        if stem.count > 120 {
+            stem = String(stem.prefix(120)).trimmingCharacters(in: .whitespaces)
+        }
+        return stem
+    }
+
+    private static func uniqueFileURL(directory: URL, stem: String, extension ext: String) -> URL {
+        let normalizedExt = ext.hasPrefix(".") ? String(ext.dropFirst()) : ext
+        var candidate = directory.appendingPathComponent("\(stem).\(normalizedExt)")
+        var index = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(stem) \(index).\(normalizedExt)")
+            index += 1
+        }
+        return candidate
+    }
+
     func resetPersistedValues() {
         referenceAudioPath = ""
         referenceText = ""
