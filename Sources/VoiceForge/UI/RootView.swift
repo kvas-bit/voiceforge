@@ -126,28 +126,16 @@ struct SidebarView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
     var body: some View {
-        // Bridge non-optional destination binding into the Optional binding `List(selection:)`
-        // expects. We never write `nil` back, so selection never resets.
-        let selection = Binding<SidebarDestination?>(
-            get: { viewModel.destination },
-            set: { new in
-                if let new { viewModel.destination = new }
-            }
-        )
-
-        List(selection: selection) {
+        // Bind List(selection:) directly to the non-optional destination. Each row is a
+        // plain Label with a matching .tag — never a Button or .onTapGesture, because
+        // either of those would intercept the row's hit-test and prevent selection.
+        List(selection: $viewModel.destination) {
             Section("Workspace") {
                 ForEach(SidebarDestination.allCases) { destination in
                     Label(destination.label, systemImage: destination.systemImage)
-                        .tag(Optional(destination))
-                        .accessibilityIdentifier("sidebarRow-\(destination.rawValue)")
+                        .tag(destination)
+                        .accessibilityIdentifier("sidebar\(destination.label)")
                 }
-            }
-            Section("Account") {
-                // Not part of the selection set; kept as a plain row so it can't steal selection.
-                Label("Subscription", systemImage: "creditcard")
-                    .foregroundStyle(VoiceForgeTheme.tertiaryText)
-                    .accessibilityIdentifier("sidebarRow-subscription")
             }
         }
         .listStyle(.sidebar)

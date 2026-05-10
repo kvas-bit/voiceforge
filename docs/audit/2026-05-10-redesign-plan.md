@@ -16,12 +16,10 @@ This plan maps the ElevenLabs reference surfaces from `2026-05-10-elevenlabs-res
 WindowGroup "VoiceForge"
 ├── NavigationSplitView
 │   ├── sidebar (240 pt)
-│   │   ├── Section "Workspace"
-│   │   │   ├── Studio              [waveform.badge.mic]      (default)
-│   │   │   ├── Voices              [person.crop.rectangle.stack]
-│   │   │   └── History             [clock.arrow.circlepath]
-│   │   └── Section "Account"
-│   │       └── Subscription        [creditcard]              (placeholder)
+│   │   └── Section "Workspace"
+│   │       ├── Studio              [waveform.badge.mic]      (default)
+│   │       ├── Voices              [person.crop.rectangle.stack]
+│   │       └── History             [clock.arrow.circlepath]
 │   ├── content
 │   │   └── selected destination
 │   └── inspector (toggle, 320 pt)
