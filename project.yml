@@ -1,0 +1,79 @@
+name: VoiceForge
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+targets:
+  VoiceForgeCore:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/VoiceForge/Core
+    settings:
+      base:
+        PRODUCT_NAME: VoiceForgeCore
+        PRODUCT_BUNDLE_IDENTIFIER: com.kaviantoniovasudeo.VoiceForgeCore
+        GENERATE_INFOPLIST_FILE: YES
+  VoiceForge:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/VoiceForge/VoiceForgeApp.swift
+      - path: Sources/VoiceForge/UI
+    dependencies:
+      - target: VoiceForgeCore
+    settings:
+      base:
+        PRODUCT_NAME: VoiceForge
+        PRODUCT_BUNDLE_IDENTIFIER: com.kaviantoniovasudeo.VoiceForge
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: VoiceForge
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.music
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_APP_SANDBOX: NO
+  VoiceForgeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/VoiceForgeTests
+    dependencies:
+      - target: VoiceForgeCore
+    settings:
+      base:
+        PRODUCT_NAME: VoiceForgeTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.kaviantoniovasudeo.VoiceForgeTests
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: ""
+        TEST_HOST: ""
+  VoiceForgeUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: UITests/VoiceForgeUITests
+    dependencies:
+      - target: VoiceForge
+    settings:
+      base:
+        PRODUCT_NAME: VoiceForgeUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.kaviantoniovasudeo.VoiceForgeUITests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  VoiceForge:
+    build:
+      targets:
+        VoiceForgeCore: all
+        VoiceForge: all
+        VoiceForgeTests: [test]
+        VoiceForgeUITests: [test]
+    test:
+      targets:
+        - VoiceForgeTests
+        - VoiceForgeUITests
