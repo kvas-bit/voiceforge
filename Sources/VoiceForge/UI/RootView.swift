@@ -1,3 +1,5 @@
+import AppKit
+import Combine
 import SwiftUI
 #if canImport(VoiceForgeCore)
 import VoiceForgeCore
@@ -5,6 +7,7 @@ import VoiceForgeCore
 
 struct RootView: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
@@ -22,6 +25,13 @@ struct RootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .navigationTitle("VoiceForge")
+        .onAppear { DockApplicationIconUpdater.refreshFromSystemAppearance() }
+        .onChange(of: colorScheme) { _, _ in
+            DockApplicationIconUpdater.refreshFromSystemAppearance()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            DockApplicationIconUpdater.refreshFromSystemAppearance()
+        }
     }
 
     private var inspectorBinding: Binding<Bool> {
