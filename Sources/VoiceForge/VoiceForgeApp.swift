@@ -8,7 +8,6 @@ struct VoiceForgeApp: App {
     @StateObject private var viewModel = AppViewModel()
 
     init() {
-        DockApplicationIconUpdater.installDistributedThemeObserverIfNeeded()
         if ProcessInfo.processInfo.arguments.contains("--uitest-reset-state") {
             clearUITestState()
         }
