@@ -5,7 +5,6 @@ import VoiceForgeCore
 
 struct RootView: View {
     @EnvironmentObject private var viewModel: AppViewModel
-    // Force the sidebar visible on launch and keep it that way; we never collapse it programmatically.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
@@ -52,15 +51,13 @@ struct RootView: View {
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(VoiceForgeTheme.primaryText)
             } icon: {
-                Image(systemName: "waveform.path.ecg.rectangle.fill")
+                Image(systemName: "waveform")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(VoiceForgeTheme.accent)
             }
             .labelStyle(.titleAndIcon)
             .fixedSize()
-        }
-        ToolbarItem(placement: .principal) {
-            StatusPill(isGenerating: viewModel.isGenerating)
+            .accessibilityIdentifier("appWordmark")
         }
         ToolbarItem(placement: .primaryAction) {
             if viewModel.isGenerating {
@@ -92,33 +89,6 @@ struct RootView: View {
             .help("Toggle inspector")
             .disabled(viewModel.destination != .studio)
         }
-    }
-}
-
-private struct StatusPill: View {
-    let isGenerating: Bool
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 6) {
-            Circle()
-                .fill(isGenerating ? Color.orange : VoiceForgeTheme.success)
-                .frame(width: 6, height: 6)
-            Text(isGenerating ? "Generating" : "Ready")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(VoiceForgeTheme.secondaryText)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 3)
-        .background(
-            Capsule(style: .continuous)
-                .fill(VoiceForgeTheme.fieldMuted)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(VoiceForgeTheme.stroke, lineWidth: 0.5)
-                )
-        )
-        .fixedSize()
     }
 }
 
