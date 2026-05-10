@@ -47,17 +47,17 @@ struct RootView: View {
     @ToolbarContentBuilder
     private var studioToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            HStack(spacing: 6) {
-                Image(systemName: "waveform.path.ecg.rectangle.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(VoiceForgeTheme.accent)
+            Label {
                 Text("VoiceForge")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(VoiceForgeTheme.primaryText)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+            } icon: {
+                Image(systemName: "waveform.path.ecg.rectangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(VoiceForgeTheme.accent)
             }
-            .frame(height: 22)
+            .labelStyle(.titleAndIcon)
+            .fixedSize()
         }
         ToolbarItem(placement: .principal) {
             StatusPill(isGenerating: viewModel.isGenerating)
@@ -99,7 +99,7 @@ private struct StatusPill: View {
     let isGenerating: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .center, spacing: 6) {
             Circle()
                 .fill(isGenerating ? Color.orange : VoiceForgeTheme.success)
                 .frame(width: 6, height: 6)
@@ -107,10 +107,9 @@ private struct StatusPill: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(VoiceForgeTheme.secondaryText)
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
         .background(
             Capsule(style: .continuous)
                 .fill(VoiceForgeTheme.fieldMuted)
@@ -119,8 +118,7 @@ private struct StatusPill: View {
                         .stroke(VoiceForgeTheme.stroke, lineWidth: 0.5)
                 )
         )
-        .fixedSize(horizontal: true, vertical: false)
-        .frame(height: 22)
+        .fixedSize()
     }
 }
 
