@@ -26,6 +26,7 @@ targets:
     sources:
       - path: Sources/VoiceForge/VoiceForgeApp.swift
       - path: Sources/VoiceForge/UI
+      - path: Sources/VoiceForge/Resources
     dependencies:
       - target: VoiceForgeCore
     settings:
@@ -36,6 +37,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: VoiceForge
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.music
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_CFBundleIconName: AppIcon
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_APP_SANDBOX: NO

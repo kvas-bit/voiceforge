@@ -12,7 +12,8 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "VoiceForge"
+            name: "VoiceForge",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "VoiceForgeTests",

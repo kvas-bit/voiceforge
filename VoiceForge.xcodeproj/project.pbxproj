@@ -28,6 +28,7 @@
 		A2163D7102A36F8DDBB7AFF3 /* VoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C807671A433B1E9BD4E03178 /* VoicesView.swift */; };
 		A9550CF98225340A1E4E259D /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AAC10C0BC12035DC6FAEEBC /* Models.swift */; };
 		B01731D37A4D9A19189BD008 /* SpeechGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D3C70E038FE4E70ACC7BB4 /* SpeechGenerationService.swift */; };
+		B432BAD54E3FFC4AF83B63C3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C292E59F893882DCF58D6F8 /* Assets.xcassets */; };
 		BC0E1218CBCEC99DE1E6D325 /* VoiceForgeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C488DE43D976B57D05F5E606 /* VoiceForgeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		CB2C7BE645DD6CC7C645BBB5 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDFF53037973F67856FA5053 /* Stores.swift */; };
@@ -105,6 +106,7 @@
 		68AA2921C74CFED58738DBF8 /* VoiceForgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceForgeApp.swift; sourceTree = "<group>"; };
 		8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGenerationServiceTests.swift; sourceTree = "<group>"; };
 		82C610C657188E92D8FC50AE /* SettingsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScene.swift; sourceTree = "<group>"; };
+		9C292E59F893882DCF58D6F8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDockView.swift; sourceTree = "<group>"; };
 		B830FC8CC13371CD300CB9EC /* VoiceForge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceForge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C807671A433B1E9BD4E03178 /* VoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesView.swift; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 			isa = PBXGroup;
 			children = (
 				AD35425F55D4980CD359A346 /* Core */,
+				9F7B7A2A8A43D26EA2E0A41A /* Resources */,
 				C3D047C61ECAB4F7D2AC3258 /* UI */,
 				733F4A5E72904F4F1693D665 /* VoiceForge */,
 				3E00BA4EAF5FEA5AB2DF9CDC /* VoiceForgeTests */,
@@ -181,6 +184,15 @@
 				FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		9F7B7A2A8A43D26EA2E0A41A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				9C292E59F893882DCF58D6F8 /* Assets.xcassets */,
+			);
+			name = Resources;
+			path = Sources/VoiceForge/Resources;
 			sourceTree = "<group>";
 		};
 		A9AFD2813BD84716888F212E /* Products */ = {
@@ -281,6 +293,7 @@
 			buildConfigurationList = 444DD893A20C597CE3A28A10 /* Build configuration list for PBXNativeTarget "VoiceForge" */;
 			buildPhases = (
 				578F41224028725A11C96D5C /* Sources */,
+				4F35EAA794BBE0C45596C48F /* Resources */,
 				F4B06D7920A11AA2F95F0B41 /* Frameworks */,
 				A4B1A913103DF9F00C82F1FB /* Embed Frameworks */,
 			);
@@ -351,6 +364,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4F35EAA794BBE0C45596C48F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B432BAD54E3FFC4AF83B63C3 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		09004E9AD1E8D60FB8EAD96E /* Sources */ = {
@@ -436,6 +460,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = VoiceForge;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -609,6 +634,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = VoiceForge;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
