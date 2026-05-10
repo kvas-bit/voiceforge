@@ -72,13 +72,16 @@ struct StoreTests {
 
     @Test func uniqueOutputURLPerGenerationID() throws {
         let service = SpeechGenerationService()
-        let home = URL(fileURLWithPath: "/Users/tester")
+        let base = URL(fileURLWithPath: "/Users/tester/Library/Application Support")
         let id1 = UUID()
         let id2 = UUID()
-        let url1 = try service.outputURL(forID: id1, homeDirectory: home)
-        let url2 = try service.outputURL(forID: id2, homeDirectory: home)
+        let url1 = try service.outputURL(forID: id1, applicationSupport: base)
+        let url2 = try service.outputURL(forID: id2, applicationSupport: base)
         #expect(url1 != url2)
-        #expect(url1.path == "/Users/tester/voiceforge/outputs/\(id1.uuidString).wav")
+        #expect(url1.path == "/Users/tester/Library/Application Support/VoiceForge/outputs/\(id1.uuidString).wav")
         #expect(url2.path.hasSuffix(".wav"))
+        // Default WAV path now lives under the same VoiceForge root.
+        let defaultURL = try service.defaultOutputURL(applicationSupport: base)
+        #expect(defaultURL.path == "/Users/tester/Library/Application Support/VoiceForge/voiceforge_output.wav")
     }
 }

@@ -25,17 +25,32 @@ public struct SpeechGenerationService: Sendable {
 
     public init() {}
 
-    public func defaultOutputURL(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) throws -> URL {
-        homeDirectory
-            .appendingPathComponent("voiceforge", isDirectory: true)
+    /// Root directory used for all VoiceForge renders. Lives under the user's
+    /// Application Support folder so the files are user-visible (Finder shows it
+    /// under `Library/Application Support`) and don't litter `$HOME`.
+    public static func renderRootDirectory(
+        applicationSupport: URL? = nil
+    ) throws -> URL {
+        let base = try applicationSupport ?? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return base.appendingPathComponent("VoiceForge", isDirectory: true)
+    }
+
+    /// Legacy "single file" output. Kept for back-compat with the Settings copy
+    /// but no longer used by the per-id render path.
+    public func defaultOutputURL(applicationSupport: URL? = nil) throws -> URL {
+        try Self.renderRootDirectory(applicationSupport: applicationSupport)
             .appendingPathComponent("voiceforge_output.wav")
     }
 
-    /// Per-generation unique output URL: `~/voiceforge/outputs/<uuid>.wav`.
+    /// Per-generation unique output URL: `<App Support>/VoiceForge/outputs/<uuid>.wav`.
     /// Keeps every render addressable by its history entry so they never collide.
-    public func outputURL(forID id: UUID, homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) throws -> URL {
-        homeDirectory
-            .appendingPathComponent("voiceforge", isDirectory: true)
+    public func outputURL(forID id: UUID, applicationSupport: URL? = nil) throws -> URL {
+        try Self.renderRootDirectory(applicationSupport: applicationSupport)
             .appendingPathComponent("outputs", isDirectory: true)
             .appendingPathComponent("\(id.uuidString).wav")
     }
@@ -116,7 +131,20 @@ public struct SpeechGenerationService: Sendable {
             editInfo: request.editInfo
         )
 
-        return try await run(command: shellCommand, formattedPrompt: formattedPrompt, outputURL: outputURL)
+        let result = try await run(
+            command: shellCommand,
+            formattedPrompt: formattedPrompt,
+            outputURL: outputURL
+        )
+        // Sanity check: the CLI claimed success but if `-o` was ignored or it
+        // crashed mid-write we'd silently add an unplayable history entry. Surface
+        // a clear, actionable error instead.
+        guard FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw SpeechGenerationError.shellFailure(
+                "mlx-speech reported success but no audio file was found at \(outputURL.path)."
+            )
+        }
+        return result
     }
 
     private func ensureOutputDirectoryExists(for outputURL: URL) throws {
