@@ -6,6 +6,18 @@ import VoiceForgeCore
 struct PlaybackDockView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
+    private var currentTitle: String {
+        if viewModel.isGenerating { return "Generating…" }
+        if let lastOutputURL = viewModel.lastOutputURL {
+            let outputPath = lastOutputURL.path
+            if let item = viewModel.history.first(where: { $0.outputPath == outputPath }) {
+                return item.name
+            }
+            return lastOutputURL.lastPathComponent
+        }
+        return "No render yet"
+    }
+
     var body: some View {
         HStack(spacing: 14) {
             Button {
@@ -20,23 +32,33 @@ struct PlaybackDockView: View {
             .accessibilityIdentifier("playOutputButton")
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(viewModel.lastOutputURL?.lastPathComponent ?? "No render yet")
+                Text(currentTitle)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(VoiceForgeTheme.primaryText)
                     .lineLimit(1)
-                WaveformView(active: viewModel.audioPlayer.isPlaying)
+                WaveformView(active: viewModel.audioPlayer.isPlaying || viewModel.isGenerating)
                     .frame(height: 26)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 6) {
-                Button {
-                    viewModel.generate()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+                if viewModel.isGenerating {
+                    Button(role: .destructive) {
+                        viewModel.cancelGeneration()
+                    } label: {
+                        Label("Cancel", systemImage: "stop.fill")
+                    }
+                    .help("Cancel the current generation (⌘.)")
+                    .accessibilityIdentifier("dockCancelButton")
+                } else {
+                    Button {
+                        viewModel.generate()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("Regenerate")
+                    .disabled(viewModel.sourceText.isEmpty)
                 }
-                .help("Regenerate")
-                .disabled(viewModel.isGenerating || viewModel.sourceText.isEmpty)
 
                 Button {
                     viewModel.saveOutputAs()

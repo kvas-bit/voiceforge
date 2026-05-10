@@ -31,6 +31,15 @@ public struct SpeechGenerationService: Sendable {
             .appendingPathComponent("voiceforge_output.wav")
     }
 
+    /// Per-generation unique output URL: `~/voiceforge/outputs/<uuid>.wav`.
+    /// Keeps every render addressable by its history entry so they never collide.
+    public func outputURL(forID id: UUID, homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) throws -> URL {
+        homeDirectory
+            .appendingPathComponent("voiceforge", isDirectory: true)
+            .appendingPathComponent("outputs", isDirectory: true)
+            .appendingPathComponent("\(id.uuidString).wav")
+    }
+
     public func command(
         formattedText: String,
         referenceAudioPath: String,
@@ -83,7 +92,7 @@ public struct SpeechGenerationService: Sendable {
         }
 
         let formattedPrompt = formatter.format(text: sourceText, emotion: request.emotionText)
-        let outputURL = try defaultOutputURL()
+        let outputURL = try outputURL(forID: request.id)
         try ensureOutputDirectoryExists(for: outputURL)
 
         if ProcessInfo.processInfo.arguments.contains("--uitest-mock-generation") {
@@ -115,44 +124,60 @@ public struct SpeechGenerationService: Sendable {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    private func run(command: String, formattedPrompt: String, outputURL: URL) async throws -> GenerationResult {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                process.arguments = ["-lc", command]
+    /// Internal so tests can drive cancellation against an arbitrary shell command.
+    /// `formattedPrompt` and `outputURL` are returned in the result for the success path.
+    func run(command: String, formattedPrompt: String, outputURL: URL) async throws -> GenerationResult {
+        let processBox = ProcessBox()
 
-                let standardOutput = Pipe()
-                let standardError = Pipe()
-                process.standardOutput = standardOutput
-                process.standardError = standardError
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GenerationResult, Error>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+                    process.arguments = ["-lc", command]
 
-                do {
-                    try process.run()
-                    process.waitUntilExit()
+                    let standardOutput = Pipe()
+                    let standardError = Pipe()
+                    process.standardOutput = standardOutput
+                    process.standardError = standardError
+                    processBox.store(process)
 
-                    let stdoutData = standardOutput.fileHandleForReading.readDataToEndOfFile()
-                    let stderrData = standardError.fileHandleForReading.readDataToEndOfFile()
-                    let stdout = String(decoding: stdoutData, as: UTF8.self)
-                    let stderr = String(decoding: stderrData, as: UTF8.self)
+                    do {
+                        try process.run()
+                        process.waitUntilExit()
 
-                    if process.terminationStatus == 0 {
-                        continuation.resume(
-                            returning: GenerationResult(
-                                formattedPrompt: formattedPrompt,
-                                outputURL: outputURL,
-                                standardOutput: stdout,
-                                standardError: stderr
+                        let stdoutData = standardOutput.fileHandleForReading.readDataToEndOfFile()
+                        let stderrData = standardError.fileHandleForReading.readDataToEndOfFile()
+                        let stdout = String(decoding: stdoutData, as: UTF8.self)
+                        let stderr = String(decoding: stderrData, as: UTF8.self)
+
+                        // If the surrounding Task was cancelled, surface CancellationError
+                        // rather than a shellFailure (the process likely exited via SIGTERM/SIGKILL).
+                        if processBox.wasCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
+
+                        if process.terminationStatus == 0 {
+                            continuation.resume(
+                                returning: GenerationResult(
+                                    formattedPrompt: formattedPrompt,
+                                    outputURL: outputURL,
+                                    standardOutput: stdout,
+                                    standardError: stderr
+                                )
                             )
-                        )
-                    } else {
-                        let message = stderr.isEmpty ? stdout : stderr
-                        continuation.resume(throwing: SpeechGenerationError.shellFailure(message.trimmingCharacters(in: .whitespacesAndNewlines)))
+                        } else {
+                            let message = stderr.isEmpty ? stdout : stderr
+                            continuation.resume(throwing: SpeechGenerationError.shellFailure(message.trimmingCharacters(in: .whitespacesAndNewlines)))
+                        }
+                    } catch {
+                        continuation.resume(throwing: error)
                     }
-                } catch {
-                    continuation.resume(throwing: error)
                 }
             }
+        } onCancel: {
+            processBox.cancel()
         }
     }
 
@@ -217,5 +242,35 @@ public struct SpeechGenerationService: Sendable {
     private func shellQuote(_ value: String) -> String {
         let escaped = value.replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
+    }
+}
+
+/// Thread-safe holder so an `onCancel` block running on an arbitrary executor can reach the
+/// in-flight `Process` and signal it. Uses POSIX `kill` because `Process.terminate()` only
+/// delivers SIGTERM; we follow up with SIGKILL after a short grace period.
+final class ProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private(set) var wasCancelled = false
+
+    func store(_ process: Process) {
+        lock.lock(); defer { lock.unlock() }
+        self.process = process
+    }
+
+    func cancel() {
+        lock.lock()
+        wasCancelled = true
+        let target = process
+        lock.unlock()
+
+        guard let target, target.isRunning else { return }
+        let pid = target.processIdentifier
+        target.terminate() // SIGTERM
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) {
+            if target.isRunning {
+                kill(pid, SIGKILL)
+            }
+        }
     }
 }

@@ -6,6 +6,8 @@ import VoiceForgeCore
 struct HistoryView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     @State private var selectedID: GenerationHistoryItem.ID?
+    @State private var renamingID: GenerationHistoryItem.ID?
+    @State private var draftName: String = ""
 
     var body: some View {
         HSplitView {
@@ -43,30 +45,50 @@ struct HistoryView: View {
 
             List(selection: $selectedID) {
                 ForEach(viewModel.history) { item in
-                    HistoryRow(item: item)
-                        .tag(item.id)
-                        .contextMenu {
-                            Button("Reuse in Studio") {
-                                viewModel.loadHistory(item)
-                                viewModel.destination = .studio
-                            }
-                            Button("Play") { viewModel.playHistory(item) }
-                            Button("Copy prompt") { viewModel.copyPrompt(item) }
-                            Button("Reveal in Finder") {
-                                let url = URL(fileURLWithPath: item.outputPath)
-                                NSWorkspace.shared.activateFileViewerSelecting([url])
-                            }
-                            Divider()
-                            Button("Delete", role: .destructive) {
-                                viewModel.deleteHistory(item)
-                            }
+                    HistoryRow(
+                        item: item,
+                        isRenaming: renamingID == item.id,
+                        draftName: $draftName,
+                        commitRename: { commitRename(for: item) },
+                        beginRename: { beginRename(for: item) }
+                    )
+                    .tag(item.id)
+                    .contextMenu {
+                        Button("Rename") { beginRename(for: item) }
+                        Button("Reuse in Studio") {
+                            viewModel.loadHistory(item)
+                            viewModel.destination = .studio
                         }
-                        .accessibilityIdentifier("historyEntry-\(item.id.uuidString)")
+                        Button("Play") { viewModel.playHistory(item) }
+                        Button("Copy prompt") { viewModel.copyPrompt(item) }
+                        Button("Reveal in Finder") {
+                            let url = URL(fileURLWithPath: item.outputPath)
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                        Divider()
+                        Button("Delete", role: .destructive) {
+                            viewModel.deleteHistory(item)
+                        }
+                    }
+                    .accessibilityIdentifier("historyEntry-\(item.id.uuidString)")
                 }
             }
             .listStyle(.inset)
             .accessibilityIdentifier("historyList")
         }
+    }
+
+    private func beginRename(for item: GenerationHistoryItem) {
+        renamingID = item.id
+        draftName = item.name
+    }
+
+    private func commitRename(for item: GenerationHistoryItem) {
+        if renamingID == item.id {
+            viewModel.renameHistory(item, to: draftName)
+        }
+        renamingID = nil
+        draftName = ""
     }
 
     @ViewBuilder
@@ -78,20 +100,43 @@ struct HistoryView: View {
                         Text(item.createdAt.formatted(date: .long, time: .shortened))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        if renamingID == item.id {
+                            TextField("Name", text: $draftName, onCommit: { commitRename(for: item) })
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(maxWidth: 360)
+                                .accessibilityIdentifier("historyDetailRenameField")
+                        } else {
+                            Text(item.name)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(VoiceForgeTheme.primaryText)
+                                .lineLimit(2)
+                                .onTapGesture(count: 2) { beginRename(for: item) }
+                        }
                         Text(item.sourceText)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(VoiceForgeTheme.primaryText)
+                            .font(.system(size: 12))
+                            .foregroundStyle(VoiceForgeTheme.secondaryText)
                             .lineLimit(3)
                     }
                     Spacer()
-                    Button {
-                        viewModel.loadHistory(item)
-                        viewModel.destination = .studio
-                    } label: {
-                        Label("Reuse", systemImage: "arrow.uturn.left.circle")
+                    HStack(spacing: 8) {
+                        Button {
+                            beginRename(for: item)
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                        .accessibilityIdentifier("historyRenameButton-\(item.id.uuidString)")
+
+                        Button {
+                            viewModel.loadHistory(item)
+                            viewModel.destination = .studio
+                        } label: {
+                            Label("Reuse", systemImage: "arrow.uturn.left.circle")
+                        }
+                        .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                        .accessibilityIdentifier("historyReuseButton-\(item.id.uuidString)")
                     }
-                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
-                    .accessibilityIdentifier("historyReuseButton-\(item.id.uuidString)")
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -170,6 +215,10 @@ struct HistoryView: View {
 
 private struct HistoryRow: View {
     let item: GenerationHistoryItem
+    let isRenaming: Bool
+    @Binding var draftName: String
+    let commitRename: () -> Void
+    let beginRename: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -177,9 +226,17 @@ private struct HistoryRow: View {
                 .font(.system(size: 16))
                 .foregroundStyle(VoiceForgeTheme.accent)
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.sourceText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(2)
+                if isRenaming {
+                    TextField("Name", text: $draftName, onCommit: commitRename)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, weight: .semibold))
+                        .accessibilityIdentifier("historyRowRenameField-\(item.id.uuidString)")
+                } else {
+                    Text(item.name)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(2)
+                        .onTapGesture(count: 2, perform: beginRename)
+                }
                 Text(item.createdAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.system(size: 10))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)

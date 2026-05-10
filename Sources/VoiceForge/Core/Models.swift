@@ -22,6 +22,7 @@ public struct VoicePreset: Codable, Equatable, Identifiable, Sendable {
 public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let createdAt: Date
+    public var name: String
     public let sourceText: String
     public let formattedPrompt: String
     public let referenceAudioPath: String
@@ -31,6 +32,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
     public init(
         id: UUID,
         createdAt: Date,
+        name: String = "",
         sourceText: String,
         formattedPrompt: String,
         referenceAudioPath: String,
@@ -39,15 +41,47 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
     ) {
         self.id = id
         self.createdAt = createdAt
+        self.name = name.isEmpty ? Self.autoName(from: sourceText) : name
         self.sourceText = sourceText
         self.formattedPrompt = formattedPrompt
         self.referenceAudioPath = referenceAudioPath
         self.referenceText = referenceText
         self.outputPath = outputPath
     }
+
+    /// Smart auto-name from prompt: strip [tags], trim, cap at 40 chars.
+    public static func autoName(from sourceText: String, limit: Int = 40) -> String {
+        let stripped = sourceText
+            .replacingOccurrences(of: #"\[[^\]]*\]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stripped.isEmpty else { return "Untitled generation" }
+        if stripped.count <= limit { return stripped }
+        let idx = stripped.index(stripped.startIndex, offsetBy: limit)
+        return String(stripped[..<idx]).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+    }
+
+    // Codable migration: pre-existing history JSON has no `name` field, so default to autoName.
+    private enum CodingKeys: String, CodingKey {
+        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.createdAt = try c.decode(Date.self, forKey: .createdAt)
+        self.sourceText = try c.decode(String.self, forKey: .sourceText)
+        self.formattedPrompt = try c.decode(String.self, forKey: .formattedPrompt)
+        self.referenceAudioPath = try c.decode(String.self, forKey: .referenceAudioPath)
+        self.referenceText = try c.decode(String.self, forKey: .referenceText)
+        self.outputPath = try c.decode(String.self, forKey: .outputPath)
+        let decodedName = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.name = decodedName.isEmpty ? Self.autoName(from: sourceText) : decodedName
+    }
 }
 
 public struct GenerationRequest: Sendable {
+    public let id: UUID
     public let sourceText: String
     public let emotionText: String
     public let referenceAudioPath: String
@@ -58,6 +92,7 @@ public struct GenerationRequest: Sendable {
     public let editInfo: String?
 
     public init(
+        id: UUID = UUID(),
         sourceText: String,
         emotionText: String,
         referenceAudioPath: String,
@@ -67,6 +102,7 @@ public struct GenerationRequest: Sendable {
         editType: String? = nil,
         editInfo: String? = nil
     ) {
+        self.id = id
         self.sourceText = sourceText
         self.emotionText = emotionText
         self.referenceAudioPath = referenceAudioPath
