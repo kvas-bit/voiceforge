@@ -141,19 +141,20 @@ private struct VoiceCard: View {
                     .font(.system(size: 42, weight: .semibold))
                     .foregroundStyle(VoiceForgeTheme.accent.opacity(0.7))
 
-                if isHovering {
+                if isHovering || viewModel.previewingVoiceID == preset.id {
                     Color.black.opacity(0.18)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     Button {
                         previewPreset()
                     } label: {
-                        Image(systemName: "play.fill")
+                        Image(systemName: viewModel.isPreviewing(voiceID: preset.id) ? "pause.fill" : "play.fill")
                             .font(.system(size: 24, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(16)
                             .background(Circle().fill(.black.opacity(0.5)))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("voicePreviewButton-\(preset.name)")
                 }
             }
             .frame(height: 130)
@@ -230,8 +231,7 @@ private struct VoiceCard: View {
 
     private func previewPreset() {
         let url = URL(fileURLWithPath: preset.referenceAudioPath)
-        try? viewModel.audioPlayer.load(url: url)
-        viewModel.audioPlayer.togglePlayback()
+        viewModel.togglePreview(voiceID: preset.id, url: url)
     }
 }
 

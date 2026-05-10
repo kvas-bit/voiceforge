@@ -92,16 +92,16 @@ struct StudioView: View {
             Spacer(minLength: 8)
 
             if hasReference {
+                let previewID = preset?.id ?? AppViewModel.looseReferencePreviewID
                 Button {
                     let url = URL(fileURLWithPath: viewModel.referenceAudioPath)
-                    try? viewModel.audioPlayer.load(url: url)
-                    viewModel.audioPlayer.togglePlayback()
+                    viewModel.togglePreview(voiceID: previewID, url: url)
                 } label: {
-                    Image(systemName: viewModel.audioPlayer.isPlaying ? "pause.circle" : "play.circle")
+                    Image(systemName: viewModel.isPreviewing(voiceID: previewID) ? "pause.circle" : "play.circle")
                         .font(.system(size: 20))
                 }
                 .buttonStyle(.borderless)
-                .help("Preview reference clip")
+                .help(viewModel.isPreviewing(voiceID: previewID) ? "Pause preview" : "Preview reference clip")
                 .accessibilityIdentifier("studioPreviewVoiceButton")
             }
 

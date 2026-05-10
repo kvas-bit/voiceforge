@@ -33,7 +33,12 @@ final class AppViewModel: ObservableObject {
     @Published var referenceAudioPath: String
     @Published var referenceText: String
     @Published var pendingGenerationID: UUID?
+    @Published var previewingVoiceID: UUID?
     @Published var isGenerating = false
+
+    /// Sentinel id used by the Studio "loose reference" preview button so the same
+    /// `previewingVoiceID` field works for both saved presets and the unbound clip.
+    static let looseReferencePreviewID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     @Published var generationError = ""
     @Published var lastFormattedPrompt = ""
     @Published var lastOutputURL: URL?
@@ -178,6 +183,7 @@ final class AppViewModel: ObservableObject {
         persistReferenceFields()
         lastFormattedPrompt = item.formattedPrompt
         lastOutputURL = URL(fileURLWithPath: item.outputPath)
+        previewingVoiceID = nil
         try? audioPlayer.load(url: URL(fileURLWithPath: item.outputPath))
     }
 
@@ -226,6 +232,35 @@ final class AppViewModel: ObservableObject {
                     self?.generationError = error.localizedDescription
                 }
             }
+        }
+    }
+
+    /// Returns true while `voiceID` is the actively previewing voice and the player is running.
+    func isPreviewing(voiceID: UUID) -> Bool {
+        previewingVoiceID == voiceID && audioPlayer.isPlaying
+    }
+
+    /// Toggle preview playback for a given voice. Stops any other voice already previewing.
+    /// Pass `forcedReload` when the underlying clip path may have changed since the last call.
+    func togglePreview(voiceID: UUID, url: URL) {
+        // Same card, currently playing -> pause without unloading.
+        if previewingVoiceID == voiceID, audioPlayer.isPlaying {
+            audioPlayer.togglePlayback()
+            return
+        }
+        // Same card, paused -> resume.
+        if previewingVoiceID == voiceID, !audioPlayer.isPlaying {
+            audioPlayer.togglePlayback()
+            return
+        }
+        // Different card (or first time) -> stop, load, play.
+        audioPlayer.stop()
+        do {
+            try audioPlayer.load(url: url)
+            previewingVoiceID = voiceID
+            audioPlayer.togglePlayback()
+        } catch {
+            previewingVoiceID = nil
         }
     }
 
@@ -291,6 +326,7 @@ final class AppViewModel: ObservableObject {
 
     func playHistory(_ item: GenerationHistoryItem) {
         let url = URL(fileURLWithPath: item.outputPath)
+        previewingVoiceID = nil
         try? audioPlayer.load(url: url)
         audioPlayer.togglePlayback()
         lastOutputURL = url
@@ -325,6 +361,7 @@ final class AppViewModel: ObservableObject {
 
         history.insert(historyItem, at: 0)
         historyStore.save(history)
+        previewingVoiceID = nil
         try? audioPlayer.load(url: result.outputURL)
     }
 }

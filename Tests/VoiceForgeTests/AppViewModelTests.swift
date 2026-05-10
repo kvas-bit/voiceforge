@@ -29,4 +29,30 @@ struct AppViewModelTests {
         #expect(viewModel.referenceAudioPath == "/tmp/reference.wav")
         #expect(viewModel.referenceText == "Recovered transcript")
     }
+
+    @Test func togglePreviewTracksTheActiveVoiceID() {
+        let suiteName = "VoiceForgeAppViewModelTests-preview-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let viewModel = AppViewModel(defaults: defaults)
+        let voiceA = UUID()
+        let voiceB = UUID()
+        let bogusURL = URL(fileURLWithPath: "/nonexistent/clip.wav")
+
+        // Starting state: nothing previewing.
+        #expect(viewModel.previewingVoiceID == nil)
+        #expect(!viewModel.isPreviewing(voiceID: voiceA))
+
+        // Calling toggle once should mark voiceA as the previewing source even though the
+        // bogus URL fails to load (AVAudioPlayer throws). The view-model should clear the id.
+        viewModel.togglePreview(voiceID: voiceA, url: bogusURL)
+        #expect(viewModel.previewingVoiceID == nil)
+        #expect(!viewModel.isPreviewing(voiceID: voiceA))
+
+        // Switching to voiceB before voiceA actually played should also stay nil and not crash.
+        viewModel.togglePreview(voiceID: voiceB, url: bogusURL)
+        #expect(viewModel.previewingVoiceID == nil)
+        #expect(!viewModel.isPreviewing(voiceID: voiceB))
+    }
 }
