@@ -49,6 +49,22 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.outputPath = outputPath
     }
 
+    /// Returns a copy with a new `outputPath`. Used by the history migration
+    /// path to relocate legacy entries from the old shared singleton file to
+    /// their canonical per-uuid path.
+    public func withOutputPath(_ newPath: String) -> GenerationHistoryItem {
+        GenerationHistoryItem(
+            id: id,
+            createdAt: createdAt,
+            name: name,
+            sourceText: sourceText,
+            formattedPrompt: formattedPrompt,
+            referenceAudioPath: referenceAudioPath,
+            referenceText: referenceText,
+            outputPath: newPath
+        )
+    }
+
     /// Smart auto-name from prompt: strip [tags], trim, cap at 40 chars.
     public static func autoName(from sourceText: String, limit: Int = 40) -> String {
         let stripped = sourceText

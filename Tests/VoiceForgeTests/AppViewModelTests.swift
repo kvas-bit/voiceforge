@@ -73,6 +73,46 @@ struct AppViewModelTests {
         #expect(viewModel.audioPlayer.currentURL == urlB)
     }
 
+    @Test func isPlayingHistoryIsKeyedOnIdNotURL() throws {
+        let suiteName = "VoiceForgeAppViewModelTests-keyedID-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let viewModel = AppViewModel(defaults: defaults)
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Two distinct history rows that legacy data would have pointed at the
+        // exact same outputPath. Before the id-keyed fix both would light up
+        // whenever either played.
+        let sharedURL = dir.appendingPathComponent("shared.wav")
+        try writeSilentWAV(to: sharedURL)
+
+        let rowA = GenerationHistoryItem(
+            id: UUID(), createdAt: Date(), name: "A",
+            sourceText: "a", formattedPrompt: "a",
+            referenceAudioPath: "/tmp/r.wav", referenceText: "r",
+            outputPath: sharedURL.path
+        )
+        let rowB = GenerationHistoryItem(
+            id: UUID(), createdAt: Date(), name: "B",
+            sourceText: "b", formattedPrompt: "b",
+            referenceAudioPath: "/tmp/r.wav", referenceText: "r",
+            outputPath: sharedURL.path
+        )
+
+        viewModel.togglePlayHistory(rowA)
+        // Whatever the audio engine decided about isPlaying, only row A's id
+        // should be the active one; row B (sharing the URL) must not light up.
+        #expect(!viewModel.isPlayingHistory(rowB))
+        // A reports the same state as the underlying player.
+        #expect(viewModel.isPlayingHistory(rowA) == viewModel.audioPlayer.isPlaying)
+
+        // Toggling row B swaps the active id over to B.
+        viewModel.togglePlayHistory(rowB)
+        #expect(!viewModel.isPlayingHistory(rowA))
+    }
+
     @Test func togglePreviewTracksTheActiveVoiceID() {
         let suiteName = "VoiceForgeAppViewModelTests-preview-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

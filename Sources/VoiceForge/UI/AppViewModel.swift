@@ -34,6 +34,11 @@ final class AppViewModel: ObservableObject {
     @Published var referenceText: String
     @Published var pendingGenerationID: UUID?
     @Published var previewingVoiceID: UUID?
+    /// Id of the history entry whose audio is currently playing. Cleared on
+    /// pause, stop, natural end, when a voice preview takes over, or when a
+    /// new generation finishes. Tracking by id (instead of by URL) ensures two
+    /// rows that happen to share the same `outputPath` don't both light up.
+    @Published var currentPlayingHistoryID: UUID?
     @Published var isGenerating = false
 
     /// Sentinel id used by the Studio "loose reference" preview button so the same
@@ -99,13 +104,30 @@ final class AppViewModel: ObservableObject {
         presetStore = VoicePresetStore(defaults: defaults)
         historyStore = HistoryStore()
         presets = presetStore.load()
-        history = historyStore.load().sorted(by: { $0.createdAt > $1.createdAt })
+        let loaded = historyStore.load()
+        // One-time cleanup of legacy entries that point at the old shared output
+        // file (or that share an outputPath with another entry). Without this,
+        // pre-migration histories cause every row to play the latest render and
+        // every play button to light up at once.
+        let migration = HistoryStore.migrateLegacyEntries(loaded)
+        history = migration.items.sorted(by: { $0.createdAt > $1.createdAt })
+        if migration.summary.relocated + migration.summary.dropped > 0 {
+            historyStore.save(history)
+            print("[VoiceForge] history migration: relocated=\(migration.summary.relocated) dropped=\(migration.summary.dropped) unchanged=\(migration.summary.unchanged)")
+        }
         sourceText = environment["VOICEFORGE_UITEST_SOURCE_TEXT"] ?? ""
         lastFormattedPrompt = ""
         audioPlayer.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+        // Clear per-row "playing" state when the clip ends on its own.
+        audioPlayer.didFinish
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.currentPlayingHistoryID = nil
             }
             .store(in: &cancellables)
         refreshPreview()
@@ -185,7 +207,9 @@ final class AppViewModel: ObservableObject {
         lastFormattedPrompt = item.formattedPrompt
         lastOutputURL = URL(fileURLWithPath: item.outputPath)
         previewingVoiceID = nil
-        try? audioPlayer.load(url: URL(fileURLWithPath: item.outputPath))
+        currentPlayingHistoryID = nil
+        // Do NOT auto-play; the user can hit the dock or row play button.
+        audioPlayer.stop()
     }
 
     func generate() {
@@ -244,6 +268,10 @@ final class AppViewModel: ObservableObject {
     /// Toggle preview playback for a given voice. Stops any other voice already previewing.
     /// Pass `forcedReload` when the underlying clip path may have changed since the last call.
     func togglePreview(voiceID: UUID, url: URL) {
+        // Voice previews take over the shared player, so any in-flight history
+        // playback must release its "currently playing" marker.
+        currentPlayingHistoryID = nil
+
         // Same card, currently playing -> pause without unloading.
         if previewingVoiceID == voiceID, audioPlayer.isPlaying {
             audioPlayer.togglePlayback()
@@ -325,16 +353,18 @@ final class AppViewModel: ObservableObject {
         pasteboard.setString(item.formattedPrompt, forType: .string)
     }
 
-    /// True while `item`'s audio is the one currently playing through the shared
-    /// player. Used by the History row Play button to flip its SF Symbol.
+    /// True iff this specific history entry's audio is the one currently
+    /// playing. Keyed on the history entry's id rather than its URL so two
+    /// rows that share an outputPath don't both report "playing" — that was
+    /// the cause of all play buttons lighting up at the same time.
     func isPlayingHistory(_ item: GenerationHistoryItem) -> Bool {
-        audioPlayer.isPlaying(url: URL(fileURLWithPath: item.outputPath))
+        currentPlayingHistoryID == item.id && audioPlayer.isPlaying
     }
 
     /// Play/pause toggle that resolves the URL from the *specific* history item.
-    /// - If the player is already playing this item: pause it (don't reload, so
-    ///   the playhead survives).
-    /// - If the player is loaded with this item but paused: resume.
+    /// - If this item is already playing: pause (don't reload, so the playhead
+    ///   survives) and clear `currentPlayingHistoryID`.
+    /// - If this item is loaded but paused: resume and mark it as the active id.
     /// - Otherwise (different item, or first play): swap to the new clip.
     /// Any active voice preview is cancelled because the shared player can only
     /// host one stream at a time.
@@ -342,14 +372,17 @@ final class AppViewModel: ObservableObject {
         let url = URL(fileURLWithPath: item.outputPath)
         previewingVoiceID = nil
 
-        if audioPlayer.currentURL == url {
+        if currentPlayingHistoryID == item.id, audioPlayer.currentURL == url {
             if audioPlayer.isPlaying {
                 audioPlayer.pause()
+                currentPlayingHistoryID = nil
             } else {
                 try? audioPlayer.play(url: url)
+                currentPlayingHistoryID = item.id
             }
         } else {
             try? audioPlayer.play(url: url)
+            currentPlayingHistoryID = audioPlayer.isPlaying ? item.id : nil
         }
         lastOutputURL = url
     }
@@ -390,6 +423,7 @@ final class AppViewModel: ObservableObject {
         history.insert(historyItem, at: 0)
         historyStore.save(history)
         previewingVoiceID = nil
+        currentPlayingHistoryID = nil
         try? audioPlayer.load(url: result.outputURL)
     }
 }

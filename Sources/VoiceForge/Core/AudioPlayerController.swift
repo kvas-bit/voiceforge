@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import Foundation
 
 public final class AudioPlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate {
@@ -7,6 +8,10 @@ public final class AudioPlayerController: NSObject, ObservableObject, AVAudioPla
     /// Lets callers (UI rows, dock) decide between resume-vs-replace without
     /// inspecting the underlying `AVAudioPlayer`.
     @Published public private(set) var currentURL: URL?
+    /// Fires exactly when the underlying `AVAudioPlayer` reports it finished
+    /// playing naturally. Subscribers (`AppViewModel`) use this to clear
+    /// per-row "playing" state once a clip ends on its own.
+    public let didFinish = PassthroughSubject<Void, Never>()
     private var player: AVAudioPlayer?
 
     public override init() {
@@ -73,5 +78,6 @@ public final class AudioPlayerController: NSObject, ObservableObject, AVAudioPla
 
     public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         isPlaying = false
+        didFinish.send(())
     }
 }
