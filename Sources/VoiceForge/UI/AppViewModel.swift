@@ -5,8 +5,29 @@ import Foundation
 import VoiceForgeCore
 #endif
 
+enum SidebarDestination: String, CaseIterable, Hashable, Identifiable {
+    case studio, voices, history
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .studio: return "Studio"
+        case .voices: return "Voices"
+        case .history: return "History"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .studio: return "waveform.badge.mic"
+        case .voices: return "person.crop.rectangle.stack"
+        case .history: return "clock.arrow.circlepath"
+        }
+    }
+}
+
 @MainActor
 final class AppViewModel: ObservableObject {
+    @Published var destination: SidebarDestination = .studio
+    @Published var inspectorVisible: Bool = true
     @Published var sourceText = ""
     @Published var emotionText: String
     @Published var referenceAudioPath: String
@@ -17,19 +38,35 @@ final class AppViewModel: ObservableObject {
     @Published var lastOutputURL: URL?
     @Published var history: [GenerationHistoryItem]
     @Published var presets: [VoicePreset]
+    @Published var selectedPresetID: UUID?
     @Published var presetName = ""
     @Published var quickInsertText = ""
     @Published var insertTrigger = 0
     @Published var cliOutput = ""
 
+    // ElevenLabs-style voice settings. Persisted locally; advisory until a remote backend lands.
+    @Published var stability: Double = 0.5
+    @Published var similarity: Double = 0.75
+    @Published var styleExaggeration: Double = 0.0
+    @Published var speakerBoost: Bool = true
+
+    // Backend knobs that DO flow through to `mlx-speech`.
+    @Published var model: String = "fish-s2-pro"
+    @Published var maxNewTokens: Double = 1500
+    @Published var editType: String = "none"
+
+    let availableModels = ["fish-s2-pro", "moss-tts", "step-audio-tts", "kokoro-multilingual"]
+    let editTypes = ["none", "emotion", "style", "speed", "denoise", "vad", "paralinguistic"]
+
     let quickTags = [
+        "[whispers]",
+        "[laughs]",
+        "[sighs]",
         "[excited]",
-        "[whisper]",
-        "[laugh]",
         "[sad]",
         "[angry]",
-        "[professional broadcast tone]",
-        "[speaking softly]"
+        "[sarcastic]",
+        "[announcer voice]"
     ]
 
     private let defaults: UserDefaults
@@ -153,7 +190,11 @@ final class AppViewModel: ObservableObject {
             sourceText: sourceText,
             emotionText: emotionText,
             referenceAudioPath: referenceAudioPath,
-            referenceText: referenceText
+            referenceText: referenceText,
+            model: model,
+            maxNewTokens: Int(maxNewTokens),
+            editType: editType == "none" ? nil : editType,
+            editInfo: nil
         )
         let service = generationService
 
@@ -198,6 +239,29 @@ final class AppViewModel: ObservableObject {
             return
         }
         NSWorkspace.shared.activateFileViewerSelecting([lastOutputURL])
+    }
+
+    func deleteHistory(_ item: GenerationHistoryItem) {
+        history.removeAll { $0.id == item.id }
+        historyStore.save(history)
+    }
+
+    func clearHistory() {
+        history = []
+        historyStore.save(history)
+    }
+
+    func copyPrompt(_ item: GenerationHistoryItem) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(item.formattedPrompt, forType: .string)
+    }
+
+    func playHistory(_ item: GenerationHistoryItem) {
+        let url = URL(fileURLWithPath: item.outputPath)
+        try? audioPlayer.load(url: url)
+        audioPlayer.togglePlayback()
+        lastOutputURL = url
     }
 
     func resetPersistedValues() {

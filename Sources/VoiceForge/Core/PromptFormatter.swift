@@ -1,17 +1,11 @@
 import Foundation
 
 public struct PromptFormatter: Sendable {
-    private let aliasMap: [String: String] = [
-        "whisper": "whispering softly and quietly",
-        "speaking softly": "speaking softly",
-        "professional broadcast tone": "professional broadcast tone",
-        "excited": "excited and energetic",
-        "laugh": "laughing lightly",
-        "sad": "sad and subdued",
-        "angry": "angry and intense"
-    ]
+    private let aliasMap: [String: String]
 
-    public init() {}
+    public init(aliasMap: [String: String] = TagCatalog.aliasMap) {
+        self.aliasMap = aliasMap
+    }
 
     public func format(text: String, emotion: String) -> String {
         let normalizedText = normalizeAsteriskTags(in: text)

@@ -1,69 +1,38 @@
 import SwiftUI
 
 enum VoiceForgeTheme {
-    static let backgroundTop = Color(red: 0.95, green: 0.952, blue: 0.958)
-    static let backgroundBottom = Color(red: 0.9, green: 0.907, blue: 0.918)
-    static let panelShell = Color.white.opacity(0.76)
-    static let panel = Color(red: 0.985, green: 0.986, blue: 0.989)
-    static let panelStrong = Color.white.opacity(0.96)
-    static let panelMuted = Color(red: 0.948, green: 0.952, blue: 0.961)
-    static let field = Color.white.opacity(0.98)
-    static let fieldMuted = Color(red: 0.956, green: 0.961, blue: 0.969)
-    static let stroke = Color(red: 0.11, green: 0.13, blue: 0.17).opacity(0.08)
-    static let strokeStrong = Color(red: 0.11, green: 0.13, blue: 0.17).opacity(0.14)
-    static let primaryText = Color(red: 0.09, green: 0.1, blue: 0.12)
-    static let secondaryText = Color(red: 0.33, green: 0.37, blue: 0.43)
-    static let tertiaryText = Color(red: 0.48, green: 0.51, blue: 0.58)
-    static let accent = Color(red: 0.12, green: 0.43, blue: 0.86)
-    static let accentSoft = Color(red: 0.87, green: 0.91, blue: 0.98)
-    static let accentStrong = Color(red: 0.08, green: 0.25, blue: 0.53)
-    static let sidebar = Color(red: 0.095, green: 0.102, blue: 0.122)
-    static let sidebarElevated = Color(red: 0.14, green: 0.147, blue: 0.171)
-    static let sidebarText = Color(red: 0.965, green: 0.97, blue: 0.982)
-    static let sidebarMutedText = Color(red: 0.68, green: 0.708, blue: 0.765)
-    static let ink = Color(red: 0.09, green: 0.11, blue: 0.15)
-    static let success = Color(red: 0.17, green: 0.55, blue: 0.39)
-    static let danger = Color(red: 0.76, green: 0.25, blue: 0.23)
+    // Surface tokens – paired with `.containerBackground(.regularMaterial)` so the
+    // window itself supplies vibrancy. These colours are layered *on top* of that material.
+    static let panelShell = Color(nsColor: .controlBackgroundColor).opacity(0.6)
+    static let panel = Color(nsColor: .controlBackgroundColor).opacity(0.92)
+    static let panelStrong = Color(nsColor: .controlBackgroundColor).opacity(0.98)
+    static let panelMuted = Color(nsColor: .underPageBackgroundColor).opacity(0.6)
+    static let field = Color(nsColor: .textBackgroundColor).opacity(0.96)
+    static let fieldMuted = Color(nsColor: .textBackgroundColor).opacity(0.78)
+    static let stroke = Color(nsColor: .separatorColor).opacity(0.7)
+    static let strokeStrong = Color(nsColor: .separatorColor)
+    static let primaryText = Color(nsColor: .labelColor)
+    static let secondaryText = Color(nsColor: .secondaryLabelColor)
+    static let tertiaryText = Color(nsColor: .tertiaryLabelColor)
+    static let accent = Color.accentColor
+    static let accentSoft = Color.accentColor.opacity(0.18)
+    static let accentStrong = Color.accentColor.opacity(0.92)
+    static let sidebar = Color(nsColor: .windowBackgroundColor).opacity(0.001) // transparent: NavigationSplitView paints the sidebar
+    static let sidebarElevated = Color(nsColor: .controlBackgroundColor).opacity(0.85)
+    static let sidebarText = Color(nsColor: .labelColor)
+    static let sidebarMutedText = Color(nsColor: .secondaryLabelColor)
+    static let ink = Color(nsColor: .labelColor)
+    static let success = Color.green
+    static let danger = Color.red
+    static let tagBackground = Color.accentColor.opacity(0.16)
+    static let tagText = Color.accentColor
 }
 
 struct VoiceForgeBackground: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [VoiceForgeTheme.backgroundTop, VoiceForgeTheme.backgroundBottom],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(Color.white.opacity(0.62))
-                .frame(width: 520, height: 520)
-                .blur(radius: 72)
-                .offset(x: -420, y: -250)
-
-            Circle()
-                .fill(VoiceForgeTheme.accent.opacity(0.14))
-                .frame(width: 420, height: 420)
-                .blur(radius: 64)
-                .offset(x: 460, y: -260)
-
-            Circle()
-                .fill(Color(red: 0.58, green: 0.66, blue: 0.84).opacity(0.12))
-                .frame(width: 420, height: 420)
-                .blur(radius: 72)
-                .offset(x: -120, y: 360)
-
-            VStack(spacing: 48) {
-                ForEach(0..<12, id: \.self) { _ in
-                    Rectangle()
-                        .fill(Color.white.opacity(0.18))
-                        .frame(height: 1)
-                }
-            }
-            .padding(.horizontal, 28)
-            .opacity(0.35)
-        }
-        .ignoresSafeArea()
+        Rectangle()
+            .fill(.background)
+            .ignoresSafeArea()
     }
 }
 
@@ -72,26 +41,19 @@ struct VoiceForgePanelModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .padding(1.5)
             .background(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(VoiceForgeTheme.panelShell)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(fill)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 26.5, style: .continuous)
-                            .fill(fill)
-                            .padding(1.5)
-                    )
-                    .shadow(color: Color(red: 0.1, green: 0.15, blue: 0.25).opacity(0.08), radius: 34, x: 0, y: 18)
             )
     }
 }
 
 extension View {
-    func voiceForgePanel(fill: Color = VoiceForgeTheme.panelStrong) -> some View {
+    func voiceForgePanel(fill: Color = VoiceForgeTheme.panel) -> some View {
         modifier(VoiceForgePanelModifier(fill: fill))
     }
 }
@@ -102,20 +64,20 @@ struct VoiceForgeField<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(VoiceForgeTheme.secondaryText)
 
             content
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(VoiceForgeTheme.field)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(VoiceForgeTheme.strokeStrong, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
                         )
                 )
 
@@ -123,6 +85,7 @@ struct VoiceForgeField<Content: View>: View {
                 Text(caption)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -136,14 +99,14 @@ struct VoiceForgePill: View {
         Text(text)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(accent ? Color.white : VoiceForgeTheme.secondaryText)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
             .background(
                 Capsule(style: .continuous)
-                    .fill(accent ? VoiceForgeTheme.accent : Color.white.opacity(0.82))
+                    .fill(accent ? VoiceForgeTheme.accent : VoiceForgeTheme.fieldMuted)
                     .overlay(
                         Capsule(style: .continuous)
-                            .stroke(accent ? VoiceForgeTheme.accentStrong.opacity(0.2) : VoiceForgeTheme.stroke, lineWidth: 1)
+                            .stroke(VoiceForgeTheme.stroke, lineWidth: accent ? 0 : 1)
                     )
             )
     }
@@ -152,48 +115,36 @@ struct VoiceForgePill: View {
 struct VoiceForgePrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(Color.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [VoiceForgeTheme.accent, VoiceForgeTheme.accentStrong],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(VoiceForgeTheme.accent)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
-            )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .opacity(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.85), value: configuration.isPressed)
     }
 }
 
 struct VoiceForgeSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(VoiceForgeTheme.primaryText)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(VoiceForgeTheme.field)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(VoiceForgeTheme.fieldMuted)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(VoiceForgeTheme.strokeStrong, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
                     )
             )
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .opacity(configuration.isPressed ? 0.95 : 1)
-            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.85), value: configuration.isPressed)
     }
 }
 
@@ -202,24 +153,24 @@ struct VoiceForgeMetricTile: View {
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.2)
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(1.0)
                 .foregroundStyle(VoiceForgeTheme.tertiaryText)
 
             Text(value)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(VoiceForgeTheme.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(VoiceForgeTheme.fieldMuted)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
                 )
         )
@@ -232,17 +183,17 @@ struct VoiceForgeInfoRow: View {
     let detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(VoiceForgeTheme.accent)
-                .frame(width: 28, height: 28)
+                .frame(width: 22, height: 22)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(VoiceForgeTheme.accentSoft.opacity(0.9))
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(VoiceForgeTheme.accentSoft)
                 )
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(VoiceForgeTheme.primaryText)

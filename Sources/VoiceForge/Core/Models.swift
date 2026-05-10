@@ -52,12 +52,29 @@ public struct GenerationRequest: Sendable {
     public let emotionText: String
     public let referenceAudioPath: String
     public let referenceText: String
+    public let model: String
+    public let maxNewTokens: Int?
+    public let editType: String?
+    public let editInfo: String?
 
-    public init(sourceText: String, emotionText: String, referenceAudioPath: String, referenceText: String) {
+    public init(
+        sourceText: String,
+        emotionText: String,
+        referenceAudioPath: String,
+        referenceText: String,
+        model: String = "fish-s2-pro",
+        maxNewTokens: Int? = nil,
+        editType: String? = nil,
+        editInfo: String? = nil
+    ) {
         self.sourceText = sourceText
         self.emotionText = emotionText
         self.referenceAudioPath = referenceAudioPath
         self.referenceText = referenceText
+        self.model = model
+        self.maxNewTokens = maxNewTokens
+        self.editType = editType
+        self.editInfo = editInfo
     }
 }
 

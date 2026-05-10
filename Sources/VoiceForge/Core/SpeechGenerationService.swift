@@ -35,13 +35,17 @@ public struct SpeechGenerationService: Sendable {
         formattedText: String,
         referenceAudioPath: String,
         referenceText: String,
-        outputURL: URL
+        outputURL: URL,
+        model: String = "fish-s2-pro",
+        maxNewTokens: Int? = nil,
+        editType: String? = nil,
+        editInfo: String? = nil
     ) -> String {
-        [
+        var parts: [String] = [
             "mlx-speech",
             "tts",
             "--model",
-            "fish-s2-pro",
+            model,
             "--text",
             shellQuote(formattedText),
             "--reference-audio",
@@ -50,7 +54,17 @@ public struct SpeechGenerationService: Sendable {
             shellQuote(referenceText),
             "-o",
             shellQuote(outputURL.path)
-        ].joined(separator: " ")
+        ]
+        if let maxNewTokens {
+            parts.append(contentsOf: ["--max-new-tokens", String(maxNewTokens)])
+        }
+        if let editType, !editType.isEmpty {
+            parts.append(contentsOf: ["--edit-type", editType])
+        }
+        if let editInfo, !editInfo.isEmpty {
+            parts.append(contentsOf: ["--edit-info", shellQuote(editInfo)])
+        }
+        return parts.joined(separator: " ")
     }
 
     public func generate(request: GenerationRequest) async throws -> GenerationResult {
@@ -86,7 +100,11 @@ public struct SpeechGenerationService: Sendable {
             formattedText: formattedPrompt,
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
-            outputURL: outputURL
+            outputURL: outputURL,
+            model: request.model,
+            maxNewTokens: request.maxNewTokens,
+            editType: request.editType,
+            editInfo: request.editInfo
         )
 
         return try await run(command: shellCommand, formattedPrompt: formattedPrompt, outputURL: outputURL)

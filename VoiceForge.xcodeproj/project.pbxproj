@@ -7,16 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		198924B8B95B0FCE0A481244 /* SettingsWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3609A3500261A1BDC18AAFAF /* SettingsWindowView.swift */; };
+		05311D5344EE4E723B10A598 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64277028E663E8C2EC5B4AE3 /* HistoryView.swift */; };
+		0A05426440E6993FCB614D59 /* SettingsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82C610C657188E92D8FC50AE /* SettingsScene.swift */; };
+		0B552E5AD9B3ED24585943DF /* TagAutocompleteController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */; };
+		2BF30BE8B5CE6A87880FE942 /* AppViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */; };
 		3D8D1264275F6B4871858D65 /* VoiceForgeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8D4CE3CC7DE8CD3EF40E81 /* VoiceForgeUITests.swift */; };
+		53EE0B7EE4E3DFA06E6657F3 /* TagCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */; };
 		542573BA27F0523F3A196A24 /* PromptTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB7164D62C208FFC4EDE1B /* PromptTextEditor.swift */; };
 		58251A51A1652FAB6C9E9B73 /* SpeechGenerationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */; };
-		6BAB00A01C7AA3D213F578D5 /* CustomVoicesWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7614378AADED18B78E93BBC /* CustomVoicesWindowView.swift */; };
+		5DA976567BF546FE9FE4A525 /* StudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6F523FE238177587B59C79 /* StudioView.swift */; };
+		64C6646F47D1FA5D11A044F5 /* TagCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 510E08C71D3C40D6760E15A1 /* TagCatalog.swift */; };
 		73C3AA35EAF9BCF616C545E6 /* PromptFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE9EB37FC153C23239F6C3F /* PromptFormatter.swift */; };
+		77DE5A3639479315CA5473CC /* StudioInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508FD370FF9ADB58D7263ED8 /* StudioInspectorView.swift */; };
 		82A845EC60D3DD675174C071 /* PromptFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51B45942F2562061CB6D7654 /* PromptFormatterTests.swift */; };
+		89AA3F5B0C469C88A54E3E62 /* PlaybackDockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */; };
 		94883A33037FF4E3E38287A9 /* VoiceForgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68AA2921C74CFED58738DBF8 /* VoiceForgeApp.swift */; };
 		98E870F4581BA7CDBFEC67D5 /* AudioPlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A38FDD53055F3E802F79553 /* AudioPlayerController.swift */; };
 		A0E854428816795719FD9199 /* VoiceForgeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; };
+		A2163D7102A36F8DDBB7AFF3 /* VoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C807671A433B1E9BD4E03178 /* VoicesView.swift */; };
 		A9550CF98225340A1E4E259D /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AAC10C0BC12035DC6FAEEBC /* Models.swift */; };
 		B01731D37A4D9A19189BD008 /* SpeechGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D3C70E038FE4E70ACC7BB4 /* SpeechGenerationService.swift */; };
 		BC0E1218CBCEC99DE1E6D325 /* VoiceForgeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -24,9 +32,9 @@
 		CB2C7BE645DD6CC7C645BBB5 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDFF53037973F67856FA5053 /* Stores.swift */; };
 		D8EC54395F55C962AFD93B51 /* VoiceForgeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54C89686A952DE8CFD0412F0 /* VoiceForgeTheme.swift */; };
 		DC5F44E209E069E0910C8086 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D34E427F5EE6F70F05417986 /* AppViewModel.swift */; };
+		DEB10DABCDE927B8E20479A6 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB99F9193B30D4BD26C8F953 /* RootView.swift */; };
 		E09D82A77F78089CD5B03D9C /* StoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 353FE045CD145C57FD257E44 /* StoreTests.swift */; };
 		E471DAF0594DAABBEEB51C47 /* VoiceForgeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; };
-		F47624D41CE2E54F7D386EEC /* GenerationWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE417D8DEA248966BB6FB030 /* GenerationWindowView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,24 +88,32 @@
 
 /* Begin PBXFileReference section */
 		0DE9EB37FC153C23239F6C3F /* PromptFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptFormatter.swift; sourceTree = "<group>"; };
+		1E6F523FE238177587B59C79 /* StudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioView.swift; sourceTree = "<group>"; };
 		22EB7164D62C208FFC4EDE1B /* PromptTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTextEditor.swift; sourceTree = "<group>"; };
 		353FE045CD145C57FD257E44 /* StoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreTests.swift; sourceTree = "<group>"; };
-		3609A3500261A1BDC18AAFAF /* SettingsWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowView.swift; sourceTree = "<group>"; };
 		3A38FDD53055F3E802F79553 /* AudioPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerController.swift; sourceTree = "<group>"; };
 		3AAC10C0BC12035DC6FAEEBC /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		49D3C70E038FE4E70ACC7BB4 /* SpeechGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGenerationService.swift; sourceTree = "<group>"; };
 		4A8D4CE3CC7DE8CD3EF40E81 /* VoiceForgeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceForgeUITests.swift; sourceTree = "<group>"; };
+		508FD370FF9ADB58D7263ED8 /* StudioInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioInspectorView.swift; sourceTree = "<group>"; };
+		510E08C71D3C40D6760E15A1 /* TagCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagCatalog.swift; sourceTree = "<group>"; };
 		51B45942F2562061CB6D7654 /* PromptFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptFormatterTests.swift; sourceTree = "<group>"; };
 		54C89686A952DE8CFD0412F0 /* VoiceForgeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceForgeTheme.swift; sourceTree = "<group>"; };
 		5A4066CFCD8AA436F5E7D76A /* VoiceForgeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceForgeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		64277028E663E8C2EC5B4AE3 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		68AA2921C74CFED58738DBF8 /* VoiceForgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceForgeApp.swift; sourceTree = "<group>"; };
 		8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGenerationServiceTests.swift; sourceTree = "<group>"; };
-		A7614378AADED18B78E93BBC /* CustomVoicesWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomVoicesWindowView.swift; sourceTree = "<group>"; };
+		82C610C657188E92D8FC50AE /* SettingsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScene.swift; sourceTree = "<group>"; };
+		9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDockView.swift; sourceTree = "<group>"; };
 		B830FC8CC13371CD300CB9EC /* VoiceForge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceForge.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		BE417D8DEA248966BB6FB030 /* GenerationWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationWindowView.swift; sourceTree = "<group>"; };
+		C807671A433B1E9BD4E03178 /* VoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesView.swift; sourceTree = "<group>"; };
+		CB99F9193B30D4BD26C8F953 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VoiceForgeCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D34E427F5EE6F70F05417986 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModelTests.swift; sourceTree = "<group>"; };
 		DDFF53037973F67856FA5053 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
+		DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagCatalogTests.swift; sourceTree = "<group>"; };
+		FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagAutocompleteController.swift; sourceTree = "<group>"; };
 		FE4B0F7429C965D3C7650DFF /* VoiceForgeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceForgeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -124,9 +140,11 @@
 		3E00BA4EAF5FEA5AB2DF9CDC /* VoiceForgeTests */ = {
 			isa = PBXGroup;
 			children = (
+				D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */,
 				51B45942F2562061CB6D7654 /* PromptFormatterTests.swift */,
 				8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */,
 				353FE045CD145C57FD257E44 /* StoreTests.swift */,
+				DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */,
 			);
 			name = VoiceForgeTests;
 			path = Tests/VoiceForgeTests;
@@ -157,6 +175,7 @@
 			isa = PBXGroup;
 			children = (
 				22EB7164D62C208FFC4EDE1B /* PromptTextEditor.swift */,
+				FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -189,6 +208,7 @@
 				0DE9EB37FC153C23239F6C3F /* PromptFormatter.swift */,
 				49D3C70E038FE4E70ACC7BB4 /* SpeechGenerationService.swift */,
 				DDFF53037973F67856FA5053 /* Stores.swift */,
+				510E08C71D3C40D6760E15A1 /* TagCatalog.swift */,
 			);
 			name = Core;
 			path = Sources/VoiceForge/Core;
@@ -198,10 +218,14 @@
 			isa = PBXGroup;
 			children = (
 				D34E427F5EE6F70F05417986 /* AppViewModel.swift */,
-				A7614378AADED18B78E93BBC /* CustomVoicesWindowView.swift */,
-				BE417D8DEA248966BB6FB030 /* GenerationWindowView.swift */,
-				3609A3500261A1BDC18AAFAF /* SettingsWindowView.swift */,
+				64277028E663E8C2EC5B4AE3 /* HistoryView.swift */,
+				9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */,
+				CB99F9193B30D4BD26C8F953 /* RootView.swift */,
+				82C610C657188E92D8FC50AE /* SettingsScene.swift */,
+				508FD370FF9ADB58D7263ED8 /* StudioInspectorView.swift */,
+				1E6F523FE238177587B59C79 /* StudioView.swift */,
 				54C89686A952DE8CFD0412F0 /* VoiceForgeTheme.swift */,
+				C807671A433B1E9BD4E03178 /* VoicesView.swift */,
 				82A511554FC5BB54B8D6DE61 /* Components */,
 			);
 			name = UI;
@@ -339,12 +363,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				DC5F44E209E069E0910C8086 /* AppViewModel.swift in Sources */,
-				6BAB00A01C7AA3D213F578D5 /* CustomVoicesWindowView.swift in Sources */,
-				F47624D41CE2E54F7D386EEC /* GenerationWindowView.swift in Sources */,
+				05311D5344EE4E723B10A598 /* HistoryView.swift in Sources */,
+				89AA3F5B0C469C88A54E3E62 /* PlaybackDockView.swift in Sources */,
 				542573BA27F0523F3A196A24 /* PromptTextEditor.swift in Sources */,
-				198924B8B95B0FCE0A481244 /* SettingsWindowView.swift in Sources */,
+				DEB10DABCDE927B8E20479A6 /* RootView.swift in Sources */,
+				0A05426440E6993FCB614D59 /* SettingsScene.swift in Sources */,
+				77DE5A3639479315CA5473CC /* StudioInspectorView.swift in Sources */,
+				5DA976567BF546FE9FE4A525 /* StudioView.swift in Sources */,
+				0B552E5AD9B3ED24585943DF /* TagAutocompleteController.swift in Sources */,
 				94883A33037FF4E3E38287A9 /* VoiceForgeApp.swift in Sources */,
 				D8EC54395F55C962AFD93B51 /* VoiceForgeTheme.swift in Sources */,
+				A2163D7102A36F8DDBB7AFF3 /* VoicesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -357,6 +386,7 @@
 				73C3AA35EAF9BCF616C545E6 /* PromptFormatter.swift in Sources */,
 				B01731D37A4D9A19189BD008 /* SpeechGenerationService.swift in Sources */,
 				CB2C7BE645DD6CC7C645BBB5 /* Stores.swift in Sources */,
+				64C6646F47D1FA5D11A044F5 /* TagCatalog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -364,9 +394,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2BF30BE8B5CE6A87880FE942 /* AppViewModelTests.swift in Sources */,
 				82A845EC60D3DD675174C071 /* PromptFormatterTests.swift in Sources */,
 				58251A51A1652FAB6C9E9B73 /* SpeechGenerationServiceTests.swift in Sources */,
 				E09D82A77F78089CD5B03D9C /* StoreTests.swift in Sources */,
+				53EE0B7EE4E3DFA06E6657F3 /* TagCatalogTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
