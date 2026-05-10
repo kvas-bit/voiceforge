@@ -82,9 +82,13 @@ private struct VoiceForgeCommands: Commands {
             .keyboardShortcut("n", modifiers: .command)
         }
         CommandMenu("Studio") {
-            Button("Generate") { viewModel.generate() }
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(viewModel.isGenerating)
+            if viewModel.isGenerating {
+                Button("Cancel Generation") { viewModel.cancelGeneration() }
+                    .keyboardShortcut(".", modifiers: .command)
+            } else {
+                Button("Generate") { viewModel.generate() }
+                    .keyboardShortcut(.return, modifiers: .command)
+            }
             Button(viewModel.audioPlayer.isPlaying ? "Pause Output" : "Play Output") {
                 viewModel.audioPlayer.togglePlayback()
             }

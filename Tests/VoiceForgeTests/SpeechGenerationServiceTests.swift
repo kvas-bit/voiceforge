@@ -24,6 +24,32 @@ struct SpeechGenerationServiceTests {
         """)
     }
 
+    @Test func cancellingInFlightTaskSurfacesCancellationError() async throws {
+        let service = SpeechGenerationService()
+        let dummyURL = URL(fileURLWithPath: "/tmp/voiceforge-cancel-test.wav")
+
+        let task = Task<GenerationResult, Error> {
+            try await service.run(
+                command: "sleep 30",
+                formattedPrompt: "irrelevant",
+                outputURL: dummyURL
+            )
+        }
+
+        // Give the child process a moment to actually spawn before cancelling.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            Issue.record("Expected the cancelled task to throw, but it returned a result")
+        } catch is CancellationError {
+            // expected
+        } catch {
+            Issue.record("Expected CancellationError, got \(error)")
+        }
+    }
+
     @Test func includesMaxTokensAndEditTypeWhenProvided() throws {
         let service = SpeechGenerationService()
         let outputURL = try service.defaultOutputURL(homeDirectory: URL(fileURLWithPath: "/Users/tester"))

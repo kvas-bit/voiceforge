@@ -32,6 +32,7 @@ final class AppViewModel: ObservableObject {
     @Published var emotionText: String
     @Published var referenceAudioPath: String
     @Published var referenceText: String
+    @Published var pendingGenerationID: UUID?
     @Published var isGenerating = false
     @Published var generationError = ""
     @Published var lastFormattedPrompt = ""
@@ -76,6 +77,7 @@ final class AppViewModel: ObservableObject {
     private let generationService = SpeechGenerationService()
     let audioPlayer = AudioPlayerController()
     private var cancellables = Set<AnyCancellable>()
+    private var generationTask: Task<Void, Never>?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -186,7 +188,11 @@ final class AppViewModel: ObservableObject {
         refreshPreview()
         isGenerating = true
 
+        let requestID = UUID()
+        pendingGenerationID = requestID
+
         let request = GenerationRequest(
+            id: requestID,
             sourceText: sourceText,
             emotionText: emotionText,
             referenceAudioPath: referenceAudioPath,
@@ -198,19 +204,45 @@ final class AppViewModel: ObservableObject {
         )
         let service = generationService
 
-        Task {
+        generationTask?.cancel()
+        generationTask = Task { [weak self] in
             do {
                 let result = try await service.generate(request: request)
+                if Task.isCancelled { return }
                 await MainActor.run {
-                    self.completeGeneration(result)
+                    self?.completeGeneration(result, id: requestID)
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self?.isGenerating = false
+                    self?.pendingGenerationID = nil
+                    self?.generationError = ""
+                    self?.cliOutput = "Generation cancelled."
                 }
             } catch {
                 await MainActor.run {
-                    self.isGenerating = false
-                    self.generationError = error.localizedDescription
+                    self?.isGenerating = false
+                    self?.pendingGenerationID = nil
+                    self?.generationError = error.localizedDescription
                 }
             }
         }
+    }
+
+    func cancelGeneration() {
+        generationTask?.cancel()
+        generationTask = nil
+    }
+
+    func renameHistory(_ item: GenerationHistoryItem, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let index = history.firstIndex(where: { $0.id == item.id }) else { return }
+        var updated = history[index]
+        updated.name = trimmed.isEmpty
+            ? GenerationHistoryItem.autoName(from: updated.sourceText)
+            : trimmed
+        history[index] = updated
+        historyStore.save(history)
     }
 
     func saveOutputAs() {
@@ -271,8 +303,9 @@ final class AppViewModel: ObservableObject {
         persistReferenceFields()
     }
 
-    private func completeGeneration(_ result: GenerationResult) {
+    private func completeGeneration(_ result: GenerationResult, id: UUID) {
         isGenerating = false
+        pendingGenerationID = nil
         lastFormattedPrompt = result.formattedPrompt
         lastOutputURL = result.outputURL
         cliOutput = [result.standardOutput, result.standardError]
@@ -280,8 +313,9 @@ final class AppViewModel: ObservableObject {
             .joined(separator: "\n")
 
         let historyItem = GenerationHistoryItem(
-            id: UUID(),
+            id: id,
             createdAt: Date(),
+            name: GenerationHistoryItem.autoName(from: sourceText),
             sourceText: sourceText,
             formattedPrompt: result.formattedPrompt,
             referenceAudioPath: referenceAudioPath,
