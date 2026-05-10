@@ -9,14 +9,8 @@ enum DockTileIconCompositor {
     private static let cornerRadiusFactor: CGFloat = 227 / 1024
 
     static func polishedDockIcon(assetName: String, prefersDark: Bool) -> NSImage? {
-        polishedImage(assetName: assetName, prefersDark: prefersDark, pixelSide: 1024)
-    }
+        let pixelSide: CGFloat = 1024
 
-    static func toolbarBrandBadge(assetName: String, prefersDark: Bool) -> NSImage? {
-        polishedImage(assetName: assetName, prefersDark: prefersDark, pixelSide: 96)
-    }
-
-    private static func polishedImage(assetName: String, prefersDark: Bool, pixelSide: CGFloat) -> NSImage? {
         guard let source = NSImage(named: NSImage.Name(assetName)) else { return nil }
 
         let composed = NSImage(size: NSSize(width: pixelSide, height: pixelSide))
@@ -69,11 +63,7 @@ enum DockTileIconCompositor {
 
         NSGraphicsContext.restoreGraphicsState()
 
-        let strokeWidth: CGFloat =
-            pixelSide < 200
-                ? max(0.95, pixelSide * 0.012)
-                : max(2, pixelSide * 0.0023)
-        clipPath.lineWidth = strokeWidth
+        clipPath.lineWidth = max(2, pixelSide * 0.0023)
         (prefersDark
             ? NSColor(calibratedWhite: 1.0, alpha: 0.18)
             : NSColor(calibratedWhite: 0.0, alpha: 0.09)).setStroke()

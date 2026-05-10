@@ -55,36 +55,6 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var studioToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            HStack(spacing: 9) {
-                let prefersDarkBadge = colorScheme == .dark
-                if let badge = DockTileIconCompositor.toolbarBrandBadge(
-                    assetName: prefersDarkBadge ? "DockIconDark" : "DockIconLight",
-                    prefersDark: prefersDarkBadge
-                ) {
-                    Image(nsImage: badge)
-                        .resizable()
-                        .interpolation(Image.Interpolation.high)
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 26, height: 26)
-                }
-                Text("VoiceForge")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(VoiceForgeTheme.primaryText)
-                    .fixedSize()
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 4)
-            .background(.quaternary.opacity(0.45), in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(VoiceForgeTheme.stroke.opacity(0.95), lineWidth: 1)
-            )
-            .fixedSize()
-            .accessibilityIdentifier("appWordmark")
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("VoiceForge")
-        }
         ToolbarItem(placement: .primaryAction) {
             if viewModel.isGenerating {
                 Button(role: .destructive) {
