@@ -48,9 +48,11 @@ struct HistoryView: View {
                     HistoryRow(
                         item: item,
                         isRenaming: renamingID == item.id,
+                        isPlaying: viewModel.isPlayingHistory(item),
                         draftName: $draftName,
                         commitRename: { commitRename(for: item) },
-                        beginRename: { beginRename(for: item) }
+                        beginRename: { beginRename(for: item) },
+                        togglePlay: { viewModel.togglePlayHistory(item) }
                     )
                     .tag(item.id)
                     .contextMenu {
@@ -168,11 +170,13 @@ struct HistoryView: View {
 
                 HStack(spacing: 10) {
                     Button {
-                        viewModel.playHistory(item)
+                        viewModel.togglePlayHistory(item)
                     } label: {
-                        Label(viewModel.audioPlayer.isPlaying ? "Pause" : "Play", systemImage: viewModel.audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                        let playing = viewModel.isPlayingHistory(item)
+                        Label(playing ? "Pause" : "Play", systemImage: playing ? "pause.fill" : "play.fill")
                     }
                     .buttonStyle(VoiceForgePrimaryButtonStyle())
+                    .accessibilityIdentifier("historyDetailPlayButton")
 
                     Button {
                         viewModel.copyPrompt(item)
@@ -216,15 +220,25 @@ struct HistoryView: View {
 private struct HistoryRow: View {
     let item: GenerationHistoryItem
     let isRenaming: Bool
+    let isPlaying: Bool
     @Binding var draftName: String
     let commitRename: () -> Void
     let beginRename: () -> Void
+    let togglePlay: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 16))
-                .foregroundStyle(VoiceForgeTheme.accent)
+        HStack(alignment: .center, spacing: 10) {
+            // Per-row play/pause toggle. Using .buttonStyle(.plain) so the row's
+            // List selection isn't stolen by the button hit-test.
+            Button(action: togglePlay) {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(VoiceForgeTheme.accent)
+            }
+            .buttonStyle(.plain)
+            .help(isPlaying ? "Pause" : "Play")
+            .accessibilityIdentifier("historyRowPlayButton-\(item.id.uuidString)")
+
             VStack(alignment: .leading, spacing: 4) {
                 if isRenaming {
                     TextField("Name", text: $draftName, onCommit: commitRename)

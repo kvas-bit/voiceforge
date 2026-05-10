@@ -23,14 +23,14 @@ private struct GeneralSettingsView: View {
     var body: some View {
         Form {
             Section("Output") {
-                LabeledContent("Default WAV path") {
+                LabeledContent("Outputs folder") {
                     Text(viewModel.outputLocationDescription)
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(VoiceForgeTheme.secondaryText)
                         .textSelection(.enabled)
                         .accessibilityIdentifier("settingsOutputPathText")
                 }
-                Text("Every render overwrites the same file so downstream tools can watch one path.")
+                Text("Each render is written to a unique <uuid>.wav inside this folder so history entries never collide and can be replayed independently.")
                     .font(.system(size: 11))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)
             }

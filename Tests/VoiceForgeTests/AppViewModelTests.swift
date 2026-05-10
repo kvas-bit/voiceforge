@@ -30,6 +30,49 @@ struct AppViewModelTests {
         #expect(viewModel.referenceText == "Recovered transcript")
     }
 
+    @Test func togglePlayHistoryResolvesItemSpecificURL() throws {
+        let suiteName = "VoiceForgeAppViewModelTests-history-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let viewModel = AppViewModel(defaults: defaults)
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let urlA = dir.appendingPathComponent("a.wav")
+        let urlB = dir.appendingPathComponent("b.wav")
+        try writeSilentWAV(to: urlA)
+        try writeSilentWAV(to: urlB)
+
+        let itemA = GenerationHistoryItem(
+            id: UUID(), createdAt: Date(), name: "A",
+            sourceText: "a", formattedPrompt: "a",
+            referenceAudioPath: "/tmp/r.wav", referenceText: "r",
+            outputPath: urlA.path
+        )
+        let itemB = GenerationHistoryItem(
+            id: UUID(), createdAt: Date(), name: "B",
+            sourceText: "b", formattedPrompt: "b",
+            referenceAudioPath: "/tmp/r.wav", referenceText: "r",
+            outputPath: urlB.path
+        )
+
+        // Toggling item A loads item A — not the last-known output URL.
+        viewModel.togglePlayHistory(itemA)
+        #expect(viewModel.audioPlayer.currentURL == urlA)
+        #expect(viewModel.lastOutputURL == urlA)
+
+        // Toggling item B must swap the player to B's URL, proving each history
+        // entry resolves to its own path rather than a shared "current output".
+        viewModel.togglePlayHistory(itemB)
+        #expect(viewModel.audioPlayer.currentURL == urlB)
+        #expect(viewModel.lastOutputURL == urlB)
+
+        // Toggling B again while loaded should pause (not reload) — currentURL stays B.
+        viewModel.togglePlayHistory(itemB)
+        #expect(viewModel.audioPlayer.currentURL == urlB)
+    }
+
     @Test func togglePreviewTracksTheActiveVoiceID() {
         let suiteName = "VoiceForgeAppViewModelTests-preview-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

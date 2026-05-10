@@ -11,6 +11,7 @@
 		0A05426440E6993FCB614D59 /* SettingsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82C610C657188E92D8FC50AE /* SettingsScene.swift */; };
 		0B552E5AD9B3ED24585943DF /* TagAutocompleteController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */; };
 		2BF30BE8B5CE6A87880FE942 /* AppViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */; };
+		2E8BA415C6815E568D5A9DBB /* AudioPlayerControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F17F5601A65EE2C4CFB133B6 /* AudioPlayerControllerTests.swift */; };
 		3D8D1264275F6B4871858D65 /* VoiceForgeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8D4CE3CC7DE8CD3EF40E81 /* VoiceForgeUITests.swift */; };
 		53EE0B7EE4E3DFA06E6657F3 /* TagCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */; };
 		542573BA27F0523F3A196A24 /* PromptTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB7164D62C208FFC4EDE1B /* PromptTextEditor.swift */; };
@@ -113,6 +114,7 @@
 		D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModelTests.swift; sourceTree = "<group>"; };
 		DDFF53037973F67856FA5053 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
 		DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagCatalogTests.swift; sourceTree = "<group>"; };
+		F17F5601A65EE2C4CFB133B6 /* AudioPlayerControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerControllerTests.swift; sourceTree = "<group>"; };
 		FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagAutocompleteController.swift; sourceTree = "<group>"; };
 		FE4B0F7429C965D3C7650DFF /* VoiceForgeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceForgeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -141,6 +143,7 @@
 			isa = PBXGroup;
 			children = (
 				D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */,
+				F17F5601A65EE2C4CFB133B6 /* AudioPlayerControllerTests.swift */,
 				51B45942F2562061CB6D7654 /* PromptFormatterTests.swift */,
 				8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */,
 				353FE045CD145C57FD257E44 /* StoreTests.swift */,
@@ -395,6 +398,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2BF30BE8B5CE6A87880FE942 /* AppViewModelTests.swift in Sources */,
+				2E8BA415C6815E568D5A9DBB /* AudioPlayerControllerTests.swift in Sources */,
 				82A845EC60D3DD675174C071 /* PromptFormatterTests.swift in Sources */,
 				58251A51A1652FAB6C9E9B73 /* SpeechGenerationServiceTests.swift in Sources */,
 				E09D82A77F78089CD5B03D9C /* StoreTests.swift in Sources */,

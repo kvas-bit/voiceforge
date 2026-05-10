@@ -116,7 +116,8 @@ final class AppViewModel: ObservableObject {
     }
 
     var outputLocationDescription: String {
-        (try? generationService.defaultOutputURL().path) ?? "~/voiceforge/voiceforge_output.wav"
+        let root = (try? SpeechGenerationService.renderRootDirectory().appendingPathComponent("outputs").path)
+        return root ?? "~/Library/Application Support/VoiceForge/outputs"
     }
 
     func refreshPreview() {
@@ -324,12 +325,39 @@ final class AppViewModel: ObservableObject {
         pasteboard.setString(item.formattedPrompt, forType: .string)
     }
 
-    func playHistory(_ item: GenerationHistoryItem) {
+    /// True while `item`'s audio is the one currently playing through the shared
+    /// player. Used by the History row Play button to flip its SF Symbol.
+    func isPlayingHistory(_ item: GenerationHistoryItem) -> Bool {
+        audioPlayer.isPlaying(url: URL(fileURLWithPath: item.outputPath))
+    }
+
+    /// Play/pause toggle that resolves the URL from the *specific* history item.
+    /// - If the player is already playing this item: pause it (don't reload, so
+    ///   the playhead survives).
+    /// - If the player is loaded with this item but paused: resume.
+    /// - Otherwise (different item, or first play): swap to the new clip.
+    /// Any active voice preview is cancelled because the shared player can only
+    /// host one stream at a time.
+    func togglePlayHistory(_ item: GenerationHistoryItem) {
         let url = URL(fileURLWithPath: item.outputPath)
         previewingVoiceID = nil
-        try? audioPlayer.load(url: url)
-        audioPlayer.togglePlayback()
+
+        if audioPlayer.currentURL == url {
+            if audioPlayer.isPlaying {
+                audioPlayer.pause()
+            } else {
+                try? audioPlayer.play(url: url)
+            }
+        } else {
+            try? audioPlayer.play(url: url)
+        }
         lastOutputURL = url
+    }
+
+    /// Kept for backward compatibility with existing menus/UITests that expected
+    /// an unconditional play. New call sites should prefer `togglePlayHistory`.
+    func playHistory(_ item: GenerationHistoryItem) {
+        togglePlayHistory(item)
     }
 
     func resetPersistedValues() {
