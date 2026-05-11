@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "VoiceForge",
-            exclude: ["Resources/AppIcon.icon"]
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "VoiceForgeTests",

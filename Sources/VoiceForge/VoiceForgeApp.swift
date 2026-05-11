@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 #if canImport(VoiceForgeCore)
 import VoiceForgeCore
@@ -9,9 +8,6 @@ struct VoiceForgeApp: App {
     @StateObject private var viewModel = AppViewModel()
 
     init() {
-        // Force light chrome only — avoids broken dark Appearance / Liquid Glass combos.
-        NSApplication.shared.appearance = NSAppearance(named: .aqua)
-
         if ProcessInfo.processInfo.arguments.contains("--uitest-reset-state") {
             clearUITestState()
         }
@@ -19,7 +15,7 @@ struct VoiceForgeApp: App {
 
     var body: some Scene {
         WindowGroup("VoiceForge", id: "main") {
-            rootContent.preferredColorScheme(.light)
+            rootContent
         }
         .defaultSize(width: 1320, height: 860)
         .windowStyle(.hiddenTitleBar)
@@ -29,7 +25,6 @@ struct VoiceForgeApp: App {
         Settings {
             SettingsScene()
                 .environmentObject(viewModel)
-                .preferredColorScheme(.light)
                 .frame(minWidth: 540, minHeight: 360)
         }
     }
