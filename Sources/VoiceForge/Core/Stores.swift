@@ -34,10 +34,12 @@ public final class VoicePresetStore {
 
 public final class HistoryStore {
     private let fileURL: URL
+    private let fileManager: FileManager
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     public init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
         let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let appDirectory = baseDirectory.appendingPathComponent("VoiceForge", isDirectory: true)
         try? fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
@@ -45,12 +47,27 @@ public final class HistoryStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
+    public init(fileURL: URL, fileManager: FileManager = .default) {
+        self.fileURL = fileURL
+        self.fileManager = fileManager
+        try? fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    }
+
     public func load() -> [GenerationHistoryItem] {
         guard let data = try? Data(contentsOf: fileURL) else {
-            return []
+            let recovered = Self.recoverEntriesFromDisk(existing: [], fileManager: fileManager)
+            if !recovered.isEmpty {
+                save(recovered)
+            }
+            return recovered
         }
-
-        return (try? decoder.decode([GenerationHistoryItem].self, from: data)) ?? []
+        let decoded = (try? decoder.decode([GenerationHistoryItem].self, from: data)) ?? []
+        let recovered = Self.recoverEntriesFromDisk(existing: decoded, fileManager: fileManager)
+        if recovered != decoded {
+            save(recovered)
+        }
+        return recovered
     }
 
     public func save(_ items: [GenerationHistoryItem]) {
@@ -59,6 +76,32 @@ public final class HistoryStore {
         }
 
         try? data.write(to: fileURL, options: .atomic)
+    }
+
+    public func delete(_ item: GenerationHistoryItem, from items: [GenerationHistoryItem]) -> [GenerationHistoryItem] {
+        removeArtifacts(for: item)
+        let updated = items.filter { $0.id != item.id }
+        save(updated)
+        return updated
+    }
+
+    public func clear(_ items: [GenerationHistoryItem]) {
+        for item in items {
+            removeArtifacts(for: item)
+        }
+        save([])
+    }
+
+    private func removeArtifacts(for item: GenerationHistoryItem) {
+        let outputURL = URL(fileURLWithPath: item.outputPath)
+
+        switch item.type {
+        case .single:
+            try? fileManager.removeItem(at: outputURL)
+        case .conversation:
+            let bundleURL = outputURL.hasDirectoryPath ? outputURL : outputURL.deletingLastPathComponent()
+            try? fileManager.removeItem(at: bundleURL)
+        }
     }
 }
 
@@ -71,6 +114,112 @@ public struct HistoryMigrationSummary: Equatable, Sendable {
 }
 
 extension HistoryStore {
+    /// Rebuilds history entries from on-disk outputs when `history.json` is
+    /// missing or incomplete. This keeps the History screen usable even if the
+    /// manifest was truncated or overwritten.
+    public static func recoverEntriesFromDisk(
+        existing: [GenerationHistoryItem],
+        applicationSupport: URL? = nil,
+        fileManager: FileManager = .default
+    ) -> [GenerationHistoryItem] {
+        let resolvedAppSupport = applicationSupport ??
+            fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("VoiceForge", isDirectory: true)
+        guard let appSupport = resolvedAppSupport else {
+            return existing
+        }
+
+        let outputsURL = appSupport.appendingPathComponent("outputs", isDirectory: true)
+        let normalizedOutputsURL = outputsURL.resolvingSymlinksInPath().standardizedFileURL
+        guard let enumerator = fileManager.enumerator(
+            at: outputsURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return existing
+        }
+
+        var mergedByKey: [String: GenerationHistoryItem] = [:]
+        var recoveredConversationIDs = Set(existing.lazy.filter { $0.type == .conversation }.map(\.id))
+        for item in existing {
+            mergedByKey[historyKey(for: item)] = item
+        }
+
+        let jsonDecoder = JSONDecoder()
+        for case let url as URL in enumerator {
+            let path = url.path
+
+            if path.hasSuffix("/conversation.json"),
+               let data = try? Data(contentsOf: url),
+               let manifest = try? jsonDecoder.decode(ConversationItem.self, from: data) {
+                let existingConversation = existing.first(where: {
+                    $0.type == .conversation && $0.conversationLines == manifest.lines
+                })
+                let item = GenerationHistoryItem(
+                    id: existingConversation?.id ?? manifest.id,
+                    createdAt: existingConversation?.createdAt ?? manifest.createdAt,
+                    name: existingConversation?.name.isEmpty == false ? existingConversation!.name : manifest.name,
+                    sourceText: manifest.lines.map(\.text).joined(separator: "\n---\n"),
+                    formattedPrompt: existingConversation?.formattedPrompt ?? "",
+                    referenceAudioPath: manifest.lines.first?.referenceAudioPath ?? "",
+                    referenceText: manifest.lines.first?.referenceText ?? "",
+                    outputPath: url.path,
+                    type: .conversation,
+                    conversationLines: manifest.lines
+                )
+                recoveredConversationIDs.insert(item.id)
+                mergedByKey[historyKey(for: item)] = item
+                continue
+            }
+
+            guard path.hasSuffix(".wav"),
+                  url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL == normalizedOutputsURL,
+                  let uuid = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else {
+                continue
+            }
+
+            if recoveredConversationIDs.contains(uuid) {
+                continue
+            }
+
+            let existingSingle = existing.first(where: { $0.type == .single && ($0.id == uuid || $0.outputPath == path) })
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+            let createdAt = existingSingle?.createdAt ?? values?.contentModificationDate ?? Date()
+            let fallbackText = "Recovered generation"
+            let item = GenerationHistoryItem(
+                id: existingSingle?.id ?? uuid,
+                createdAt: createdAt,
+                name: existingSingle?.name ?? fallbackText,
+                sourceText: existingSingle?.sourceText ?? fallbackText,
+                formattedPrompt: existingSingle?.formattedPrompt ?? "",
+                referenceAudioPath: existingSingle?.referenceAudioPath ?? "",
+                referenceText: existingSingle?.referenceText ?? "",
+                outputPath: path,
+                type: .single,
+                conversationLines: nil
+            )
+            mergedByKey[historyKey(for: item)] = item
+        }
+
+        for item in existing where item.type == .single && recoveredConversationIDs.contains(item.id) {
+            mergedByKey.removeValue(forKey: historyKey(for: item))
+        }
+
+        return mergedByKey.values.sorted(by: { $0.createdAt > $1.createdAt })
+    }
+
+    private static func historyKey(for item: GenerationHistoryItem) -> String {
+        switch item.type {
+        case .single:
+            return "single:\(item.outputPath)"
+        case .conversation:
+            if let lines = item.conversationLines {
+                return "conversation:\(lines.map(\.id.uuidString).joined(separator: ","))"
+            }
+            return "conversation:\(item.outputPath)"
+        }
+    }
+
     /// One-time migration that brings legacy history entries onto the per-uuid
     /// `<App Support>/VoiceForge/outputs/<id>.wav` layout.
     ///
