@@ -59,17 +59,25 @@ struct HistoryView: View {
                     .tag(item.id)
                     .contextMenu {
                         Button("Rename") { beginRename(for: item) }
-                        Button("Reuse in Studio") {
-                            viewModel.loadHistory(item)
-                            viewModel.destination = .studio
+                        Button(item.type == .conversation ? "Open in Conversations" : "Reuse in Studio") {
+                            if item.type == .conversation {
+                                viewModel.loadConversation(item)
+                            } else {
+                                viewModel.loadHistory(item)
+                                viewModel.destination = .studio
+                            }
                         }
-                        Button("Play") { viewModel.playHistory(item) }
-                        Button("Copy prompt") { viewModel.copyPrompt(item) }
+                        Button(item.type == .conversation ? "Open and play" : "Play") {
+                            viewModel.playHistory(item)
+                        }
+                        if item.type == .single {
+                            Button("Copy prompt") { viewModel.copyPrompt(item) }
+                        }
                         Button("Reveal in Finder") {
                             let url = URL(fileURLWithPath: item.outputPath)
                             NSWorkspace.shared.activateFileViewerSelecting([url])
                         }
-                        Button("Download to Downloads") {
+                        Button(item.type == .conversation ? "Download merged WAV" : "Download to Downloads") {
                             viewModel.downloadHistoryItemToDownloads(item)
                         }
                         Divider()
@@ -136,29 +144,50 @@ struct HistoryView: View {
                         .accessibilityIdentifier("historyRenameButton-\(item.id.uuidString)")
 
                         Button {
-                            viewModel.loadHistory(item)
-                            viewModel.destination = .studio
+                            if item.type == .conversation {
+                                viewModel.loadConversation(item)
+                            } else {
+                                viewModel.loadHistory(item)
+                                viewModel.destination = .studio
+                            }
                         } label: {
-                            Label("Reuse", systemImage: "arrow.uturn.left.circle")
+                            Label(item.type == .conversation ? "Open" : "Reuse", systemImage: item.type == .conversation ? "text.badge.plus" : "arrow.uturn.left.circle")
                         }
                         .buttonStyle(VoiceForgeSecondaryButtonStyle())
                         .accessibilityIdentifier("historyReuseButton-\(item.id.uuidString)")
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Formatted prompt")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(VoiceForgeTheme.tertiaryText)
-                    Text(item.formattedPrompt)
-                        .font(.system(size: 13, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(VoiceForgeTheme.fieldMuted)
-                        )
+                if item.type == .single {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Formatted prompt")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        Text(item.formattedPrompt)
+                            .font(.system(size: 13, design: .monospaced))
+                            .textSelection(.enabled)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(VoiceForgeTheme.fieldMuted)
+                            )
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Conversation")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        Text("\((item.conversationLines ?? []).count) line\(((item.conversationLines ?? []).count == 1) ? "" : "s") saved in this bundle.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(VoiceForgeTheme.secondaryText)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(VoiceForgeTheme.fieldMuted)
+                            )
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -177,23 +206,32 @@ struct HistoryView: View {
                     Button {
                         viewModel.togglePlayHistory(item)
                     } label: {
-                        let playing = viewModel.isPlayingHistory(item)
-                        Label(playing ? "Pause" : "Play", systemImage: playing ? "pause.fill" : "play.fill")
+                        if item.type == .conversation {
+                            Label("Open & Play", systemImage: "play.square")
+                        } else {
+                            let playing = viewModel.isPlayingHistory(item)
+                            Label(playing ? "Pause" : "Play", systemImage: playing ? "pause.fill" : "play.fill")
+                        }
                     }
                     .buttonStyle(VoiceForgePrimaryButtonStyle())
                     .accessibilityIdentifier("historyDetailPlayButton")
 
-                    Button {
-                        viewModel.copyPrompt(item)
-                    } label: {
-                        Label("Copy prompt", systemImage: "doc.on.doc")
+                    if item.type == .single {
+                        Button {
+                            viewModel.copyPrompt(item)
+                        } label: {
+                            Label("Copy prompt", systemImage: "doc.on.doc")
+                        }
+                        .buttonStyle(VoiceForgeSecondaryButtonStyle())
                     }
-                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
 
                     Button {
                         viewModel.downloadHistoryItemToDownloads(item)
                     } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
+                        Label(
+                            item.type == .conversation ? "Download merged WAV" : "Download",
+                            systemImage: "arrow.down.circle"
+                        )
                     }
                     .buttonStyle(VoiceForgeSecondaryButtonStyle())
                     .accessibilityIdentifier("historyDetailDownloadButton")
@@ -245,12 +283,12 @@ private struct HistoryRow: View {
             // Per-row play/pause toggle. Using .buttonStyle(.plain) so the row's
             // List selection isn't stolen by the button hit-test.
             Button(action: togglePlay) {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: rowPlayImage)
                     .font(.system(size: 22))
                     .foregroundStyle(VoiceForgeTheme.accent)
             }
             .buttonStyle(.plain)
-            .help(isPlaying ? "Pause" : "Play")
+            .help(rowPlayHelp)
             .accessibilityIdentifier("historyRowPlayButton-\(item.id.uuidString)")
 
             Button(action: downloadToDownloads) {
@@ -259,7 +297,7 @@ private struct HistoryRow: View {
                     .foregroundStyle(VoiceForgeTheme.secondaryText)
             }
             .buttonStyle(.plain)
-            .help("Copy WAV to Downloads")
+            .help(item.type == .conversation ? "Download merged WAV to Downloads" : "Copy WAV to Downloads")
             .accessibilityIdentifier("historyRowDownloadButton-\(item.id.uuidString)")
 
             VStack(alignment: .leading, spacing: 4) {
@@ -280,5 +318,13 @@ private struct HistoryRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var rowPlayImage: String {
+        item.type == .conversation ? "play.square" : (isPlaying ? "pause.circle.fill" : "play.circle.fill")
+    }
+
+    private var rowPlayHelp: String {
+        item.type == .conversation ? "Open and play conversation" : (isPlaying ? "Pause" : "Play")
     }
 }
