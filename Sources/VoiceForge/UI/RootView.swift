@@ -40,6 +40,8 @@ struct RootView: View {
             VoicesView()
         case .history:
             HistoryView()
+        case .conversations:
+            ConversationsView()
         }
     }
 
