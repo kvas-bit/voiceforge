@@ -10,14 +10,17 @@
 		05311D5344EE4E723B10A598 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64277028E663E8C2EC5B4AE3 /* HistoryView.swift */; };
 		0A05426440E6993FCB614D59 /* SettingsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82C610C657188E92D8FC50AE /* SettingsScene.swift */; };
 		0B552E5AD9B3ED24585943DF /* TagAutocompleteController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */; };
+		214E57C1469AF3E08FED7BFB /* ConversationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6FEA84AF8A332D4AAB777CB /* ConversationsView.swift */; };
 		2BF30BE8B5CE6A87880FE942 /* AppViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */; };
 		2E8BA415C6815E568D5A9DBB /* AudioPlayerControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F17F5601A65EE2C4CFB133B6 /* AudioPlayerControllerTests.swift */; };
 		3D8D1264275F6B4871858D65 /* VoiceForgeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8D4CE3CC7DE8CD3EF40E81 /* VoiceForgeUITests.swift */; };
 		53EE0B7EE4E3DFA06E6657F3 /* TagCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */; };
 		542573BA27F0523F3A196A24 /* PromptTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB7164D62C208FFC4EDE1B /* PromptTextEditor.swift */; };
 		58251A51A1652FAB6C9E9B73 /* SpeechGenerationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */; };
+		5A1ABDA24EC3891877860239 /* Models+Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCA786CC19D67E4C5AB12C3F /* Models+Conversation.swift */; };
 		5DA976567BF546FE9FE4A525 /* StudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6F523FE238177587B59C79 /* StudioView.swift */; };
 		64C6646F47D1FA5D11A044F5 /* TagCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 510E08C71D3C40D6760E15A1 /* TagCatalog.swift */; };
+		6ABBC8B8A1DABF8F67E2D837 /* ConversationLineRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984C16A21A9EEE88A868BD1B /* ConversationLineRow.swift */; };
 		73C3AA35EAF9BCF616C545E6 /* PromptFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE9EB37FC153C23239F6C3F /* PromptFormatter.swift */; };
 		77DE5A3639479315CA5473CC /* StudioInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508FD370FF9ADB58D7263ED8 /* StudioInspectorView.swift */; };
 		82A845EC60D3DD675174C071 /* PromptFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51B45942F2562061CB6D7654 /* PromptFormatterTests.swift */; };
@@ -37,6 +40,8 @@
 		DEB10DABCDE927B8E20479A6 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB99F9193B30D4BD26C8F953 /* RootView.swift */; };
 		E09D82A77F78089CD5B03D9C /* StoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 353FE045CD145C57FD257E44 /* StoreTests.swift */; };
 		E471DAF0594DAABBEEB51C47 /* VoiceForgeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; };
+		E60DB61CA4BBF4CA15734EAA /* ConversationPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967F68406F07F70F1181D528 /* ConversationPlayer.swift */; };
+		EB367166BF068AC82EBD6BCC /* ConversationPlaybackBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01443E35F091B191CEBBE70 /* ConversationPlaybackBar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -106,9 +111,13 @@
 		68AA2921C74CFED58738DBF8 /* VoiceForgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceForgeApp.swift; sourceTree = "<group>"; };
 		8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGenerationServiceTests.swift; sourceTree = "<group>"; };
 		82C610C657188E92D8FC50AE /* SettingsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScene.swift; sourceTree = "<group>"; };
+		967F68406F07F70F1181D528 /* ConversationPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationPlayer.swift; sourceTree = "<group>"; };
+		984C16A21A9EEE88A868BD1B /* ConversationLineRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationLineRow.swift; sourceTree = "<group>"; };
 		9C292E59F893882DCF58D6F8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDockView.swift; sourceTree = "<group>"; };
+		B6FEA84AF8A332D4AAB777CB /* ConversationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationsView.swift; sourceTree = "<group>"; };
 		B830FC8CC13371CD300CB9EC /* VoiceForge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceForge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BCA786CC19D67E4C5AB12C3F /* Models+Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models+Conversation.swift"; sourceTree = "<group>"; };
 		C807671A433B1E9BD4E03178 /* VoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesView.swift; sourceTree = "<group>"; };
 		CB99F9193B30D4BD26C8F953 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VoiceForgeCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -116,6 +125,7 @@
 		D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModelTests.swift; sourceTree = "<group>"; };
 		DDFF53037973F67856FA5053 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
 		DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagCatalogTests.swift; sourceTree = "<group>"; };
+		F01443E35F091B191CEBBE70 /* ConversationPlaybackBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationPlaybackBar.swift; sourceTree = "<group>"; };
 		F17F5601A65EE2C4CFB133B6 /* AudioPlayerControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerControllerTests.swift; sourceTree = "<group>"; };
 		FA8E3F5C3886BE0B61BAF154 /* TagAutocompleteController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagAutocompleteController.swift; sourceTree = "<group>"; };
 		FE4B0F7429C965D3C7650DFF /* VoiceForgeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceForgeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -220,6 +230,7 @@
 			children = (
 				3A38FDD53055F3E802F79553 /* AudioPlayerController.swift */,
 				3AAC10C0BC12035DC6FAEEBC /* Models.swift */,
+				BCA786CC19D67E4C5AB12C3F /* Models+Conversation.swift */,
 				0DE9EB37FC153C23239F6C3F /* PromptFormatter.swift */,
 				49D3C70E038FE4E70ACC7BB4 /* SpeechGenerationService.swift */,
 				DDFF53037973F67856FA5053 /* Stores.swift */,
@@ -233,6 +244,10 @@
 			isa = PBXGroup;
 			children = (
 				D34E427F5EE6F70F05417986 /* AppViewModel.swift */,
+				984C16A21A9EEE88A868BD1B /* ConversationLineRow.swift */,
+				F01443E35F091B191CEBBE70 /* ConversationPlaybackBar.swift */,
+				967F68406F07F70F1181D528 /* ConversationPlayer.swift */,
+				B6FEA84AF8A332D4AAB777CB /* ConversationsView.swift */,
 				64277028E663E8C2EC5B4AE3 /* HistoryView.swift */,
 				9CACD893ADBA645978CD5228 /* PlaybackDockView.swift */,
 				CB99F9193B30D4BD26C8F953 /* RootView.swift */,
@@ -390,6 +405,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				DC5F44E209E069E0910C8086 /* AppViewModel.swift in Sources */,
+				6ABBC8B8A1DABF8F67E2D837 /* ConversationLineRow.swift in Sources */,
+				EB367166BF068AC82EBD6BCC /* ConversationPlaybackBar.swift in Sources */,
+				E60DB61CA4BBF4CA15734EAA /* ConversationPlayer.swift in Sources */,
+				214E57C1469AF3E08FED7BFB /* ConversationsView.swift in Sources */,
 				05311D5344EE4E723B10A598 /* HistoryView.swift in Sources */,
 				89AA3F5B0C469C88A54E3E62 /* PlaybackDockView.swift in Sources */,
 				542573BA27F0523F3A196A24 /* PromptTextEditor.swift in Sources */,
@@ -409,6 +428,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				98E870F4581BA7CDBFEC67D5 /* AudioPlayerController.swift in Sources */,
+				5A1ABDA24EC3891877860239 /* Models+Conversation.swift in Sources */,
 				A9550CF98225340A1E4E259D /* Models.swift in Sources */,
 				73C3AA35EAF9BCF616C545E6 /* PromptFormatter.swift in Sources */,
 				B01731D37A4D9A19189BD008 /* SpeechGenerationService.swift in Sources */,

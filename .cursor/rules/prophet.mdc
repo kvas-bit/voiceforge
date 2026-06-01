@@ -1,0 +1,13 @@
+---
+description: The Prophet (VoiceForge) — voice cloning app rules
+alwaysApply: true
+---
+
+# The Prophet — VoiceForge
+
+SwiftUI macOS voice cloning app using mlx-speech.
+
+- `mlx-speech` must be in PATH before running
+- WAV output — don't change audio format
+- SwiftUI only, no AppKit
+- Build: `swift build` / `swift test`
