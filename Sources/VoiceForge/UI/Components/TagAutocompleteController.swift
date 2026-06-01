@@ -51,7 +51,7 @@ final class TagAutocompleteController {
             panel.backgroundColor = .clear
             panel.isOpaque = false
             panel.level = .floating
-            panel.hidesOnDeactivate = false
+            panel.hidesOnDeactivate = true
             self.panel = panel
         }
 

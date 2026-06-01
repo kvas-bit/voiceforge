@@ -10,6 +10,7 @@ struct PromptTextEditor: NSViewRepresentable {
     @Binding var text: String
     let pendingInsertion: String
     let insertTrigger: Int
+    var accessibilityIdentifier: String = "sourceTextEditor"
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
@@ -33,7 +34,7 @@ struct PromptTextEditor: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.textContainerInset = NSSize(width: 14, height: 14)
-        textView.setAccessibilityIdentifier("sourceTextEditor")
+        textView.setAccessibilityIdentifier(accessibilityIdentifier)
         context.coordinator.textView = textView
         context.coordinator.applyTagHighlighting()
 

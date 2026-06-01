@@ -113,6 +113,8 @@ struct VoiceForgePill: View {
 }
 
 struct VoiceForgePrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
@@ -121,8 +123,9 @@ struct VoiceForgePrimaryButtonStyle: ButtonStyle {
             .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(VoiceForgeTheme.accent)
+                    .fill(isEnabled ? VoiceForgeTheme.accent : VoiceForgeTheme.accent.opacity(0.35))
             )
+            .opacity(isEnabled ? 1 : 0.72)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.2, dampingFraction: 0.85), value: configuration.isPressed)
     }
