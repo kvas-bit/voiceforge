@@ -198,4 +198,297 @@ struct StoreTests {
         let defaultURL = try service.defaultOutputURL(applicationSupport: base)
         #expect(defaultURL.path == "/Users/tester/Library/Application Support/VoiceForge/voiceforge_output.wav")
     }
+
+    @Test func diskRecoveryRebuildsSinglesAndConversationsWhenHistoryIsIncomplete() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory
+            .appendingPathComponent("VoiceForgeHistoryRecovery-\(UUID().uuidString)", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support/VoiceForge", isDirectory: true)
+        let outputs = appSupport.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: outputs, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: home) }
+
+        let singleID = UUID()
+        let singleURL = outputs.appendingPathComponent("\(singleID.uuidString).wav")
+        try writeSilentWAV(to: singleURL)
+
+        let conversationID = UUID()
+        let conversationDir = outputs.appendingPathComponent(conversationID.uuidString, isDirectory: true)
+        try fm.createDirectory(at: conversationDir, withIntermediateDirectories: true)
+        let lineURL = conversationDir.appendingPathComponent("line-1.wav")
+        try writeSilentWAV(to: lineURL)
+        let line = ConversationLine(
+            text: "Recovered conversation line",
+            referenceAudioPath: "/tmp/ref.wav",
+            referenceText: "Recovered transcript",
+            outputPath: lineURL.path,
+            status: .completed
+        )
+        let manifest = ConversationItem(
+            id: conversationID,
+            createdAt: Date(timeIntervalSince1970: 1234),
+            name: "Recovered conversation",
+            lines: [line]
+        )
+        try JSONEncoder().encode(manifest).write(to: conversationDir.appendingPathComponent("conversation.json"))
+
+        let existing = [
+            GenerationHistoryItem(
+                id: UUID(),
+                createdAt: Date(timeIntervalSince1970: 2345),
+                name: "Only conversation",
+                sourceText: line.text,
+                formattedPrompt: "",
+                referenceAudioPath: line.referenceAudioPath,
+                referenceText: line.referenceText,
+                outputPath: conversationDir.appendingPathComponent("conversation.json").path,
+                type: .conversation,
+                conversationLines: [line]
+            )
+        ]
+
+        let recovered = HistoryStore.recoverEntriesFromDisk(
+            existing: existing,
+            applicationSupport: appSupport,
+            fileManager: fm
+        )
+        let normalizedSinglePath = singleURL.resolvingSymlinksInPath().standardizedFileURL.path
+
+        #expect(recovered.contains(where: {
+            $0.type == .single &&
+            URL(fileURLWithPath: $0.outputPath).resolvingSymlinksInPath().standardizedFileURL.path == normalizedSinglePath
+        }))
+        #expect(recovered.contains(where: { $0.type == .conversation && $0.outputPath.hasSuffix("conversation.json") }))
+        #expect(recovered.count == 2)
+    }
+
+    @Test func deletingSingleRemovesBackingFileSoItDoesNotReappearOnRecovery() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("VoiceForgeDeleteSingle-\(UUID().uuidString)", isDirectory: true)
+        let appSupport = root.appendingPathComponent("Library/Application Support/VoiceForge", isDirectory: true)
+        let outputs = appSupport.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: outputs, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let outputURL = outputs.appendingPathComponent("\(UUID().uuidString).wav")
+        try writeSilentWAV(to: outputURL)
+
+        let item = GenerationHistoryItem(
+            id: UUID(),
+            createdAt: Date(timeIntervalSince1970: 100),
+            name: "Delete me",
+            sourceText: "Delete me",
+            formattedPrompt: "Delete me",
+            referenceAudioPath: "/tmp/ref.wav",
+            referenceText: "ref",
+            outputPath: outputURL.path
+        )
+
+        let store = HistoryStore(fileURL: appSupport.appendingPathComponent("history.json"), fileManager: fm)
+        let updated = store.delete(item, from: [item])
+
+        #expect(updated.isEmpty)
+        #expect(!fm.fileExists(atPath: outputURL.path))
+
+        let recovered = HistoryStore.recoverEntriesFromDisk(
+            existing: updated,
+            applicationSupport: appSupport,
+            fileManager: fm
+        )
+        #expect(recovered.isEmpty)
+    }
+
+    @Test func deletingConversationRemovesBundleSoItDoesNotReappearOnRecovery() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("VoiceForgeDeleteConversation-\(UUID().uuidString)", isDirectory: true)
+        let appSupport = root.appendingPathComponent("Library/Application Support/VoiceForge", isDirectory: true)
+        let outputs = appSupport.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: outputs, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let conversationID = UUID()
+        let conversationDir = outputs.appendingPathComponent(conversationID.uuidString, isDirectory: true)
+        try fm.createDirectory(at: conversationDir, withIntermediateDirectories: true)
+        let lineURL = conversationDir.appendingPathComponent("line-1.wav")
+        try writeSilentWAV(to: lineURL)
+        let line = ConversationLine(
+            text: "Delete this conversation",
+            referenceAudioPath: "/tmp/ref.wav",
+            referenceText: "ref",
+            outputPath: lineURL.path,
+            status: .completed
+        )
+        let manifestURL = conversationDir.appendingPathComponent("conversation.json")
+        let manifest = ConversationItem(
+            id: conversationID,
+            createdAt: Date(timeIntervalSince1970: 200),
+            name: "Conversation to delete",
+            lines: [line]
+        )
+        try JSONEncoder().encode(manifest).write(to: manifestURL)
+
+        let item = GenerationHistoryItem(
+            id: conversationID,
+            createdAt: Date(timeIntervalSince1970: 200),
+            name: "Conversation to delete",
+            sourceText: line.text,
+            formattedPrompt: "",
+            referenceAudioPath: line.referenceAudioPath,
+            referenceText: line.referenceText,
+            outputPath: manifestURL.path,
+            type: .conversation,
+            conversationLines: [line]
+        )
+
+        let store = HistoryStore(fileURL: appSupport.appendingPathComponent("history.json"), fileManager: fm)
+        let updated = store.delete(item, from: [item])
+
+        #expect(updated.isEmpty)
+        #expect(!fm.fileExists(atPath: conversationDir.path))
+
+        let recovered = HistoryStore.recoverEntriesFromDisk(
+            existing: updated,
+            applicationSupport: appSupport,
+            fileManager: fm
+        )
+        #expect(recovered.isEmpty)
+    }
+
+
+    @Test func diskRecoveryPrefersConversationBundleOverTopLevelWAVWithSameID() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory
+            .appendingPathComponent("VoiceForgeHistoryRecoveryCollision-\(UUID().uuidString)", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support/VoiceForge", isDirectory: true)
+        let outputs = appSupport.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: outputs, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: home) }
+
+        let sharedID = UUID()
+        let topLevelWAV = outputs.appendingPathComponent("\(sharedID.uuidString).wav")
+        try writeSilentWAV(to: topLevelWAV)
+
+        let conversationDir = outputs.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: conversationDir, withIntermediateDirectories: true)
+        let lineURL = conversationDir.appendingPathComponent("line-1.wav")
+        try writeSilentWAV(to: lineURL)
+        let line = ConversationLine(
+            text: "Collision line",
+            referenceAudioPath: "/tmp/ref.wav",
+            referenceText: "Collision transcript",
+            outputPath: lineURL.path,
+            status: .completed
+        )
+        let manifest = ConversationItem(
+            id: sharedID,
+            createdAt: Date(timeIntervalSince1970: 500),
+            name: "Recovered conversation",
+            lines: [line]
+        )
+        let manifestURL = conversationDir.appendingPathComponent("conversation.json")
+        try JSONEncoder().encode(manifest).write(to: manifestURL)
+
+        let existing = [
+            GenerationHistoryItem(
+                id: sharedID,
+                createdAt: Date(timeIntervalSince1970: 600),
+                name: "Broken conversation",
+                sourceText: line.text,
+                formattedPrompt: "",
+                referenceAudioPath: line.referenceAudioPath,
+                referenceText: line.referenceText,
+                outputPath: topLevelWAV.path,
+                type: .conversation,
+                conversationLines: [line]
+            )
+        ]
+
+        let recovered = HistoryStore.recoverEntriesFromDisk(
+            existing: existing,
+            applicationSupport: appSupport,
+            fileManager: fm
+        )
+
+        #expect(recovered.count == 1)
+        let recoveredConversation = try #require(recovered.first)
+        #expect(recoveredConversation.type == .conversation)
+        #expect(recoveredConversation.id == sharedID)
+        #expect(
+            URL(fileURLWithPath: recoveredConversation.outputPath).resolvingSymlinksInPath().standardizedFileURL.path ==
+            manifestURL.resolvingSymlinksInPath().standardizedFileURL.path
+        )
+    }
+
+    @Test func diskRecoveryRemovesStaleSingleWhenHistoryAlreadyContainsSameIDConversation() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory
+            .appendingPathComponent("VoiceForgeHistoryRecoveryExistingCollision-\(UUID().uuidString)", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support/VoiceForge", isDirectory: true)
+        let outputs = appSupport.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: outputs, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: home) }
+
+        let sharedID = UUID()
+        let topLevelWAV = outputs.appendingPathComponent("\(sharedID.uuidString).wav")
+        try writeSilentWAV(to: topLevelWAV)
+
+        let conversationDir = outputs.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: conversationDir, withIntermediateDirectories: true)
+        let lineURL = conversationDir.appendingPathComponent("line-1.wav")
+        try writeSilentWAV(to: lineURL)
+        let line = ConversationLine(
+            text: "Existing collision line",
+            referenceAudioPath: "/tmp/ref.wav",
+            referenceText: "Existing collision transcript",
+            outputPath: lineURL.path,
+            status: .completed
+        )
+        let manifestURL = conversationDir.appendingPathComponent("conversation.json")
+        let manifest = ConversationItem(
+            id: sharedID,
+            createdAt: Date(timeIntervalSince1970: 700),
+            name: "Recovered conversation",
+            lines: [line]
+        )
+        try JSONEncoder().encode(manifest).write(to: manifestURL)
+
+        let existing = [
+            GenerationHistoryItem(
+                id: sharedID,
+                createdAt: Date(timeIntervalSince1970: 701),
+                name: "Existing conversation",
+                sourceText: line.text,
+                formattedPrompt: "",
+                referenceAudioPath: line.referenceAudioPath,
+                referenceText: line.referenceText,
+                outputPath: manifestURL.path,
+                type: .conversation,
+                conversationLines: [line]
+            ),
+            GenerationHistoryItem(
+                id: sharedID,
+                createdAt: Date(timeIntervalSince1970: 702),
+                name: "Stale single",
+                sourceText: "Should disappear",
+                formattedPrompt: "",
+                referenceAudioPath: "",
+                referenceText: "",
+                outputPath: topLevelWAV.path,
+                type: .single
+            )
+        ]
+
+        let recovered = HistoryStore.recoverEntriesFromDisk(
+            existing: existing,
+            applicationSupport: appSupport,
+            fileManager: fm
+        )
+
+        #expect(recovered.count == 1)
+        let remaining = try #require(recovered.first)
+        #expect(remaining.type == .conversation)
+        #expect(remaining.id == sharedID)
+    }
 }

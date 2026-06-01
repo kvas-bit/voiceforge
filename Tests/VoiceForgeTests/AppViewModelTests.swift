@@ -138,4 +138,117 @@ struct AppViewModelTests {
         #expect(viewModel.previewingVoiceID == nil)
         #expect(!viewModel.isPreviewing(voiceID: voiceB))
     }
+
+    @Test func conversationPlaybackModeStaysIdleForEmptyDraft() {
+        let suiteName = "VoiceForgeAppViewModelTests-conversation-empty-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let viewModel = AppViewModel(defaults: defaults)
+
+        #expect(!viewModel.hasConversationLines)
+        #expect(!viewModel.conversationHasGeneratedAudio)
+        #expect(!viewModel.conversationIsInPlaybackMode)
+    }
+
+    @Test func loadConversationUsesManifestSettingsAndTargetsConversations() throws {
+        let suiteName = "VoiceForgeAppViewModelTests-conversation-load-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let viewModel = AppViewModel(defaults: defaults)
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let manifestURL = dir.appendingPathComponent("conversation.json")
+        let manifest = ConversationItem(
+            name: "Office Hours",
+            lines: [
+                ConversationLine(
+                    text: "Professor, can you explain the assignment?",
+                    referenceAudioPath: "/tmp/ref.wav",
+                    referenceText: "Reference transcript",
+                    outputPath: "/tmp/line1.wav",
+                    status: .completed
+                )
+            ],
+            globalModel: "kokoro-multilingual",
+            globalMaxNewTokens: 2048,
+            globalEditType: "style"
+        )
+        try JSONEncoder().encode(manifest).write(to: manifestURL)
+
+        let historyItem = GenerationHistoryItem(
+            id: UUID(),
+            createdAt: Date(),
+            name: "Saved chat",
+            sourceText: "Professor, can you explain the assignment?",
+            formattedPrompt: "",
+            referenceAudioPath: "",
+            referenceText: "",
+            outputPath: manifestURL.path,
+            type: .conversation
+        )
+
+        viewModel.loadConversation(historyItem)
+
+        #expect(viewModel.destination == .conversations)
+        #expect(viewModel.conversationName == "Saved chat")
+        #expect(viewModel.model == "kokoro-multilingual")
+        #expect(Int(viewModel.maxNewTokens) == 2048)
+        #expect(viewModel.editType == "style")
+        #expect(viewModel.conversationLines == manifest.lines)
+        #expect(viewModel.conversationHasGeneratedAudio)
+    }
+
+    @Test func togglePlayHistoryForConversationLoadsConversationInsteadOfJSONAudio() throws {
+        let suiteName = "VoiceForgeAppViewModelTests-conversation-history-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let viewModel = AppViewModel(defaults: defaults)
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let lineURL = dir.appendingPathComponent("line.wav")
+        try writeSilentWAV(to: lineURL)
+
+        let manifestURL = dir.appendingPathComponent("conversation.json")
+        let line = ConversationLine(
+            text: "Welcome back.",
+            referenceAudioPath: "/tmp/ref.wav",
+            referenceText: "Reference transcript",
+            outputPath: lineURL.path,
+            status: .completed
+        )
+        let manifest = ConversationItem(
+            name: "Briefing",
+            lines: [line],
+            globalModel: "fish-s2-pro",
+            globalMaxNewTokens: 1500,
+            globalEditType: "none"
+        )
+        try JSONEncoder().encode(manifest).write(to: manifestURL)
+
+        let historyItem = GenerationHistoryItem(
+            id: UUID(),
+            createdAt: Date(),
+            name: "Briefing",
+            sourceText: line.text,
+            formattedPrompt: "",
+            referenceAudioPath: line.referenceAudioPath,
+            referenceText: line.referenceText,
+            outputPath: manifestURL.path,
+            type: .conversation,
+            conversationLines: [line]
+        )
+
+        viewModel.togglePlayHistory(historyItem)
+
+        #expect(viewModel.destination == .conversations)
+        #expect(viewModel.audioPlayer.currentURL != manifestURL)
+        #expect(viewModel.conversationLines == [line])
+        #expect(viewModel.conversationPlaybackState != .idle)
+        #expect(viewModel.conversationPlayer.currentLineIndex == 0)
+    }
 }
