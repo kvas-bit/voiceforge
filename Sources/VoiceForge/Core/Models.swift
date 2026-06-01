@@ -19,6 +19,11 @@ public struct VoicePreset: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public enum HistoryItemType: String, Codable, Sendable {
+    case single
+    case conversation
+}
+
 public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let createdAt: Date
@@ -28,6 +33,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
     public let referenceAudioPath: String
     public let referenceText: String
     public let outputPath: String
+    public let type: HistoryItemType
+    public let conversationLines: [ConversationLine]?
 
     public init(
         id: UUID,
@@ -37,7 +44,9 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         formattedPrompt: String,
         referenceAudioPath: String,
         referenceText: String,
-        outputPath: String
+        outputPath: String,
+        type: HistoryItemType = .single,
+        conversationLines: [ConversationLine]? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -47,6 +56,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.referenceAudioPath = referenceAudioPath
         self.referenceText = referenceText
         self.outputPath = outputPath
+        self.type = type
+        self.conversationLines = conversationLines
     }
 
     /// Returns a copy with a new `outputPath`. Used by the history migration
@@ -61,7 +72,9 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
             formattedPrompt: formattedPrompt,
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
-            outputPath: newPath
+            outputPath: newPath,
+            type: type,
+            conversationLines: conversationLines
         )
     }
 
@@ -79,7 +92,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
 
     // Codable migration: pre-existing history JSON has no `name` field, so default to autoName.
     private enum CodingKeys: String, CodingKey {
-        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath
+        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath, type, conversationLines
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,6 +106,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.outputPath = try c.decode(String.self, forKey: .outputPath)
         let decodedName = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         self.name = decodedName.isEmpty ? Self.autoName(from: sourceText) : decodedName
+        self.type = try c.decodeIfPresent(HistoryItemType.self, forKey: .type) ?? .single
+        self.conversationLines = try c.decodeIfPresent([ConversationLine].self, forKey: .conversationLines)
     }
 }
 
