@@ -117,14 +117,38 @@ final class AppViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var generationTask: Task<Void, Never>?
 
+    // MARK: - Ollama (optional local prompt intelligence, off by default)
+
+    private let ollamaCoordinator: OllamaCoordinator
+    private var promptSuggestionTask: Task<Void, Never>?
+    @Published var ollamaEnabled: Bool
+    @Published var ollamaStatus: OllamaStatus = .idle
+    @Published var ollamaModels: [OllamaModel] = []
+    @Published var selectedOllamaModel: String
+    /// The most recent suggestion, shown separately from `sourceText` until
+    /// the user explicitly applies it — generation never sees this on its own.
+    @Published var promptSuggestion: String?
+    @Published var isSuggestingPrompt: Bool = false
+    @Published var promptSuggestionError: String?
+
     /// Convenience init for production.
     convenience init() {
-        self.init(defaults: .standard, historyStore: HistoryStore(), generationService: SpeechGenerationService())
+        self.init(
+            defaults: .standard, historyStore: HistoryStore(), generationService: SpeechGenerationService(),
+            ollamaCoordinator: OllamaCoordinator()
+        )
     }
 
     /// Designated initializer. All dependencies are explicit.
-    init(defaults: UserDefaults, historyStore: HistoryStore, generationService: SpeechGenerationService = SpeechGenerationService()) {
+    init(
+        defaults: UserDefaults, historyStore: HistoryStore,
+        generationService: SpeechGenerationService = SpeechGenerationService(),
+        ollamaCoordinator: OllamaCoordinator = OllamaCoordinator()
+    ) {
         self.defaults = defaults
+        self.ollamaCoordinator = ollamaCoordinator
+        ollamaEnabled = defaults.bool(forKey: VoiceForgeStorageKeys.ollamaEnabled)
+        selectedOllamaModel = defaults.string(forKey: VoiceForgeStorageKeys.selectedOllamaModel) ?? ""
         let environment = ProcessInfo.processInfo.environment
         referenceAudioPath = environment["VOICEFORGE_UITEST_REFERENCE_AUDIO"]
             ?? defaults.string(forKey: VoiceForgeStorageKeys.referenceAudioPath)
@@ -180,10 +204,128 @@ final class AppViewModel: ObservableObject {
         // Prewarm the persistent helper in the background.
         let svc = generationService
         Task { _ = await svc.prewarmPersistentHelper() }
+
+        // Resume Ollama only if the user previously enabled it — starting
+        // (or detecting) the server only happens when actually needed.
+        if ollamaEnabled {
+            Task { await self.refreshOllamaStatus() }
+        }
     }
 
     func shutdownService() async {
         await generationService.shutdownPersistentHelper()
+    }
+
+    // MARK: - Ollama
+
+    /// Enables/disables local prompt intelligence. Enabling triggers
+    /// discovery/startup in the background; disabling stops (only) a server
+    /// this coordinator itself started, and clears cached state.
+    func setOllamaEnabled(_ enabled: Bool) {
+        ollamaEnabled = enabled
+        defaults.set(enabled, forKey: VoiceForgeStorageKeys.ollamaEnabled)
+        if enabled {
+            Task { await refreshOllamaStatus() }
+        } else {
+            promptSuggestionTask?.cancel()
+            promptSuggestionTask = nil
+            isSuggestingPrompt = false
+            promptSuggestion = nil
+            promptSuggestionError = nil
+            ollamaModels = []
+            ollamaStatus = .idle
+            let coordinator = ollamaCoordinator
+            Task { await coordinator.shutdownIfOwned() }
+        }
+    }
+
+    /// Ensures a server is reachable (starting one only if needed) and
+    /// refreshes the installed-model list. Safe to call repeatedly, e.g. from
+    /// a Settings "Refresh" action.
+    func refreshOllamaStatus() async {
+        guard ollamaEnabled else { return }
+        let status = await ollamaCoordinator.ensureRunning()
+        await MainActor.run { self.ollamaStatus = status }
+        guard status == .runningOwned || status == .runningExternal else { return }
+        guard let models = try? await ollamaCoordinator.listModels() else { return }
+        await MainActor.run {
+            self.ollamaModels = models
+            if self.selectedOllamaModel.isEmpty || !models.contains(where: { $0.name == self.selectedOllamaModel }) {
+                if let first = models.first {
+                    self.selectOllamaModel(first.name)
+                }
+            }
+        }
+    }
+
+    func selectOllamaModel(_ name: String) {
+        selectedOllamaModel = name
+        defaults.set(name, forKey: VoiceForgeStorageKeys.selectedOllamaModel)
+    }
+
+    /// Asks the selected model to suggest a more expressive, Fish-compatible
+    /// rewrite of the current script. The result is only ever stored in
+    /// `promptSuggestion` — `sourceText` is untouched until `applyPromptSuggestion()`.
+    func requestPromptSuggestion() {
+        guard ollamaEnabled, !selectedOllamaModel.isEmpty else { return }
+        let trimmed = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        promptSuggestionTask?.cancel()
+        isSuggestingPrompt = true
+        promptSuggestionError = nil
+        promptSuggestion = nil
+
+        let coordinator = ollamaCoordinator
+        let model = selectedOllamaModel
+        let text = sourceText
+        let emotion = emotionText
+
+        promptSuggestionTask = Task { [weak self] in
+            do {
+                let suggestion = try await coordinator.suggestPrompt(model: model, sourceText: text, emotionText: emotion)
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    self?.isSuggestingPrompt = false
+                    self?.promptSuggestion = suggestion
+                }
+            } catch is CancellationError {
+                await MainActor.run { self?.isSuggestingPrompt = false }
+            } catch {
+                if Task.isCancelled {
+                    await MainActor.run { self?.isSuggestingPrompt = false }
+                    return
+                }
+                await MainActor.run {
+                    self?.isSuggestingPrompt = false
+                    self?.promptSuggestionError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func cancelPromptSuggestion() {
+        promptSuggestionTask?.cancel()
+        promptSuggestionTask = nil
+        isSuggestingPrompt = false
+    }
+
+    /// Explicitly copies the current suggestion into the script. This is the
+    /// only path by which an Ollama suggestion ever reaches `sourceText`.
+    func applyPromptSuggestion() {
+        guard let suggestion = promptSuggestion else { return }
+        sourceText = suggestion
+        promptSuggestion = nil
+        refreshPreview()
+    }
+
+    func dismissPromptSuggestion() {
+        promptSuggestion = nil
+        promptSuggestionError = nil
+    }
+
+    func shutdownOllamaIfOwned() async {
+        await ollamaCoordinator.shutdownIfOwned()
     }
 
     var formattedPreview: String {

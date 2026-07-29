@@ -5,6 +5,9 @@ public enum VoiceForgeStorageKeys {
     public static let referenceText = "voiceforge.referenceText"
     public static let emotionText = "voiceforge.emotionText"
     public static let voicePresets = "voiceforge.voicePresets"
+    /// Off by default — local Ollama prompt intelligence is strictly opt-in.
+    public static let ollamaEnabled = "voiceforge.ollamaEnabled"
+    public static let selectedOllamaModel = "voiceforge.selectedOllamaModel"
 }
 
 public final class VoicePresetStore {

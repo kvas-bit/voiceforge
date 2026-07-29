@@ -16,6 +16,9 @@ struct StudioView: View {
                     }
                     referenceCard
                     editorCard
+                    if viewModel.ollamaEnabled {
+                        ollamaSuggestionSection
+                    }
                     previewCard
                     if !viewModel.generationError.isEmpty || !viewModel.cliOutput.isEmpty {
                         statusCard
@@ -75,6 +78,76 @@ struct StudioView: View {
                 .fill(VoiceForgeTheme.accentSoft)
         )
         .accessibilityIdentifier("regenerationBanner")
+    }
+
+    private var ollamaSuggestionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Ollama suggestion", systemImage: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                if viewModel.isSuggestingPrompt {
+                    Button("Cancel") {
+                        viewModel.cancelPromptSuggestion()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(VoiceForgeTheme.accent)
+                    .accessibilityIdentifier("ollamaCancelSuggestButton")
+                }
+                Button {
+                    viewModel.requestPromptSuggestion()
+                } label: {
+                    if viewModel.isSuggestingPrompt {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Suggest")
+                    }
+                }
+                .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                .disabled(viewModel.isSuggestingPrompt
+                    || viewModel.selectedOllamaModel.isEmpty
+                    || viewModel.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("ollamaSuggestButton")
+            }
+
+            if let suggestion = viewModel.promptSuggestion {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(suggestion)
+                        .font(.system(size: 13))
+                        .foregroundStyle(VoiceForgeTheme.primaryText)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(VoiceForgeTheme.fieldMuted)
+                        )
+                        .accessibilityIdentifier("ollamaSuggestionText")
+                    HStack(spacing: 8) {
+                        Button("Apply") {
+                            viewModel.applyPromptSuggestion()
+                        }
+                        .buttonStyle(VoiceForgePrimaryButtonStyle())
+                        .accessibilityIdentifier("ollamaApplySuggestionButton")
+                        Button("Dismiss") {
+                            viewModel.dismissPromptSuggestion()
+                        }
+                        .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                        .accessibilityIdentifier("ollamaDismissSuggestionButton")
+                    }
+                }
+            }
+
+            if let error = viewModel.promptSuggestionError {
+                Text(error)
+                    .font(.system(size: 11))
+                    .foregroundStyle(VoiceForgeTheme.danger)
+                    .accessibilityIdentifier("ollamaSuggestionErrorText")
+            }
+        }
+        .padding(18)
+        .voiceForgePanel(fill: VoiceForgeTheme.panel)
     }
 
     private var referenceCard: some View {

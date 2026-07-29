@@ -56,7 +56,10 @@ struct VoiceForgeApp: App {
         WindowGroup("VoiceForge", id: "main") {
             rootContent
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-                    Task { await viewModel.shutdownService() }
+                    Task {
+                        await viewModel.shutdownService()
+                        await viewModel.shutdownOllamaIfOwned()
+                    }
                 }
         }
         .defaultSize(width: 1320, height: 860)

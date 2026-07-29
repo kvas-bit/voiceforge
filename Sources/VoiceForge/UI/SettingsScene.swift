@@ -10,6 +10,8 @@ struct SettingsScene: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             GenerationSettingsView()
                 .tabItem { Label("Generation", systemImage: "slider.horizontal.3") }
+            IntelligenceSettingsView()
+                .tabItem { Label("Intelligence", systemImage: "sparkles") }
             AdvancedSettingsView()
                 .tabItem { Label("Advanced", systemImage: "terminal") }
         }
@@ -69,6 +71,67 @@ private struct GenerationSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct IntelligenceSettingsView: View {
+    @EnvironmentObject private var viewModel: AppViewModel
+
+    var body: some View {
+        Form {
+            Section("Local prompt intelligence") {
+                Toggle("Enable Ollama-assisted suggestions", isOn: Binding(
+                    get: { viewModel.ollamaEnabled },
+                    set: { viewModel.setOllamaEnabled($0) }
+                ))
+                .accessibilityIdentifier("ollamaEnabledToggle")
+
+                LabeledContent("Status") {
+                    Text(statusText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(VoiceForgeTheme.secondaryText)
+                        .accessibilityIdentifier("ollamaStatusText")
+                }
+
+                if viewModel.ollamaEnabled {
+                    if viewModel.ollamaModels.isEmpty {
+                        Text("No models found. Install one with `ollama pull <model>`.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                    } else {
+                        Picker("Model", selection: Binding(
+                            get: { viewModel.selectedOllamaModel },
+                            set: { viewModel.selectOllamaModel($0) }
+                        )) {
+                            ForEach(viewModel.ollamaModels) { model in
+                                Text(model.name).tag(model.name)
+                            }
+                        }
+                        .accessibilityIdentifier("ollamaModelPicker")
+                    }
+
+                    Button("Refresh") {
+                        Task { await viewModel.refreshOllamaStatus() }
+                    }
+                    .accessibilityIdentifier("ollamaRefreshButton")
+                }
+
+                Text("Off by default. When enabled, VoiceForge looks for a local Ollama install, uses an already-running server if it finds one, or starts one itself — and only ever stops the server it started. Suggestions in Studio are shown separately and never change your script until you tap Apply.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(VoiceForgeTheme.tertiaryText)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var statusText: String {
+        switch viewModel.ollamaStatus {
+        case .idle: return "Off"
+        case .starting: return "Starting…"
+        case .runningOwned: return "Running (started by VoiceForge)"
+        case .runningExternal: return "Running (external server)"
+        case .unavailable(let reason): return "Unavailable — \(reason)"
+        }
     }
 }
 
