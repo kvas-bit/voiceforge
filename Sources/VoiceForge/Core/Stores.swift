@@ -203,8 +203,18 @@ extension HistoryStore {
             if path.hasSuffix("/conversation.json"),
                let data = try? Data(contentsOf: url),
                let manifest = try? jsonDecoder.decode(ConversationItem.self, from: data) {
+                // Match by the manifest's own `id` — a per-conversation,
+                // globally-unique identifier that's explicitly meant to
+                // carry identity (astronomically unlikely to collide by
+                // chance). Matching by `conversationLines` *content*
+                // equality (the previous approach) is unsound: two distinct
+                // conversations can legitimately have identical `lines`
+                // (confirmed in production: repeated mock/test generations
+                // produced conversations with equal line content), which
+                // caused recovery to splice an unrelated on-disk manifest's
+                // path onto an existing entry it had nothing to do with.
                 let existingConversation = existing.first(where: {
-                    $0.type == .conversation && $0.conversationLines == manifest.lines
+                    $0.type == .conversation && $0.id == manifest.id
                 })
                 // Preserve the exact saved outputPath only when both paths
                 // resolve to the same physical file — this keeps alias
@@ -293,10 +303,15 @@ extension HistoryStore {
         case .single:
             return "single:\(normalizedPath(item.outputPath))"
         case .conversation:
-            if let lines = item.conversationLines {
-                return "conversation:\(lines.map(\.id.uuidString).joined(separator: ","))"
-            }
-            return "conversation:\(normalizedPath(item.outputPath))"
+            // Key by the conversation's own stable identity (its top-level
+            // `id`, which recovery derives from the on-disk folder UUID),
+            // never by `conversationLines` content — two distinct
+            // conversations can have identical lines (confirmed in
+            // production: repeated mock/test generations produced
+            // conversations with equal line content and equal line ids),
+            // which previously collapsed unrelated entries into one
+            // dictionary slot and silently dropped one of them.
+            return "conversation:\(item.id.uuidString)"
         }
     }
 

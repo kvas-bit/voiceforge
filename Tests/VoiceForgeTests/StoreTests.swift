@@ -235,7 +235,10 @@ struct StoreTests {
         let existingConvPath = conversationDir.appendingPathComponent("conversation.json").path
         let existing = [
             GenerationHistoryItem(
-                id: UUID(),
+                // Matches the manifest's own id, as real (non-corrupted) data
+                // always does — recovery associates by this id, never by
+                // `conversationLines` content equality.
+                id: conversationID,
                 createdAt: Date(timeIntervalSince1970: 2345),
                 name: "Only conversation",
                 sourceText: line.text,

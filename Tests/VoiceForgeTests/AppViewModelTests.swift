@@ -355,4 +355,114 @@ struct AppViewModelTests {
         let decoyMtime = try fm.attributesOfItem(atPath: decoyWAV.path)[.modificationDate] as! Date
         #expect(abs(decoyMtime.timeIntervalSince(decoySentinel)) < 1.0)
     }
+
+    /// Regression for a real production data-safety bug: two existing
+    /// conversation-type history entries have legacy, non-canonical
+    /// (flat-.wav-shaped) `outputPath`s and — as happens naturally with
+    /// repeated similar mock/test generations — *content-identical*
+    /// `conversationLines`. Two genuinely unrelated, orphaned on-disk
+    /// `outputs/<uuid>/conversation.json` folders happen to have that same
+    /// line content. Startup recovery must identify conversations by their
+    /// on-disk folder UUID (their actual, unambiguous identity), never by
+    /// `conversationLines` content equality — otherwise an orphaned
+    /// manifest's path gets spliced onto an unrelated existing entry, which
+    /// is exactly what shipped and corrupted a live `history.json`.
+    @Test func recoveryNeverCrossAssociatesConversationsByContentEquality() throws {
+        let fm = FileManager.default
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
+        let outputsDir = store.storageRoot.appendingPathComponent("outputs", isDirectory: true)
+
+        // Shared line content — deliberately identical across two otherwise
+        // unrelated conversations, reproducing the real collision.
+        func sharedLines() -> [ConversationLine] {
+            [ConversationLine(
+                id: UUID(uuidString: "0DE80DCC-5F52-4DD0-866A-37ED74CCEB15")!,
+                text: "Welcome back to VoiceForge.",
+                referenceAudioPath: "/tmp/mock.wav",
+                referenceText: "Mock transcript",
+                outputPath: "/tmp/mock-line.wav",
+                status: .completed
+            )]
+        }
+
+        let existingID1 = UUID(uuidString: "74D40A98-0E7B-4E6F-BF60-76D32503CC91")!
+        let existingID2 = UUID(uuidString: "EB3E8BFA-A387-4F0A-B0DC-F85A6819CB9A")!
+        // Legacy, non-canonical outputPath shape (flat .wav, not
+        // outputs/<id>/conversation.json) — matches the real corrupted data.
+        let legacyOutputPath1 = outputsDir.appendingPathComponent("\(existingID1.uuidString).wav").path
+        let legacyOutputPath2 = outputsDir.appendingPathComponent("\(existingID2.uuidString).wav").path
+
+        let existing1 = GenerationHistoryItem(
+            id: existingID1, createdAt: Date(timeIntervalSince1970: 801_058_820),
+            name: "Hey dad! I love you so much",
+            sourceText: "Welcome back to VoiceForge.", formattedPrompt: "",
+            referenceAudioPath: "/tmp/mock.wav", referenceText: "Mock transcript",
+            outputPath: legacyOutputPath1, type: .conversation, conversationLines: sharedLines()
+        )
+        let existing2 = GenerationHistoryItem(
+            id: existingID2, createdAt: Date(timeIntervalSince1970: 800_934_986),
+            name: "History conversation",
+            sourceText: "Welcome back to VoiceForge.", formattedPrompt: "",
+            referenceAudioPath: "/tmp/mock.wav", referenceText: "Mock transcript",
+            outputPath: legacyOutputPath2, type: .conversation, conversationLines: sharedLines()
+        )
+        store.save([existing1, existing2])
+        // The legacy files must actually exist, or `migrateLegacy` (called
+        // right after `load()` in `AppViewModel.init`) would drop these
+        // conversation entries as missing rather than exercising recovery.
+        try Data([0x00]).write(to: URL(fileURLWithPath: legacyOutputPath1))
+        try Data([0x00]).write(to: URL(fileURLWithPath: legacyOutputPath2))
+
+        // Two genuinely orphaned on-disk conversation folders — different
+        // ids, never referenced by history.json — whose manifests happen to
+        // share the exact same line content as the existing entries above.
+        let orphanID1 = UUID(uuidString: "C45D0B53-B635-4F9C-9B6E-634B9AAFCAB3")!
+        let orphanID2 = UUID(uuidString: "6541D849-4415-453F-A141-DFFC0FD70374")!
+        for orphanID in [orphanID1, orphanID2] {
+            let dir = outputsDir.appendingPathComponent(orphanID.uuidString, isDirectory: true)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let manifest = ConversationItem(
+                id: orphanID, createdAt: Date(timeIntervalSince1970: 700_000_000),
+                name: "Orphaned", lines: sharedLines()
+            )
+            try JSONEncoder().encode(manifest).write(to: dir.appendingPathComponent("conversation.json"))
+        }
+
+        let suiteName = "VF-CrossAssoc-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // --- First construction ---
+        let vm1 = AppViewModel(defaults: defaults, historyStore: store)
+        let byID1 = Dictionary(uniqueKeysWithValues: vm1.history.map { ($0.id, $0) })
+
+        // The two originally-existing entries must survive with their own
+        // identity and their own (legacy) outputPath untouched — never
+        // spliced onto an orphan's path.
+        #expect(byID1[existingID1]?.outputPath == legacyOutputPath1)
+        #expect(byID1[existingID2]?.outputPath == legacyOutputPath2)
+
+        // The orphaned manifests must be recovered under their *own* folder
+        // identity, not merged into the unrelated existing entries.
+        #expect(byID1[orphanID1] != nil, "Orphaned conversation should be recovered under its own folder id")
+        #expect(byID1[orphanID2] != nil, "Orphaned conversation should be recovered under its own folder id")
+        #expect(vm1.history.count == 4)
+
+        let historyURL = store.storageRoot.appendingPathComponent("history.json")
+        let bytesAfterFirst = try Data(contentsOf: historyURL)
+
+        // --- Second construction: must be fully stable (idempotent) ---
+        let vm2 = AppViewModel(defaults: defaults, historyStore: store)
+        let byID2 = Dictionary(uniqueKeysWithValues: vm2.history.map { ($0.id, $0) })
+
+        #expect(byID2[existingID1]?.outputPath == legacyOutputPath1)
+        #expect(byID2[existingID2]?.outputPath == legacyOutputPath2)
+        #expect(byID2[orphanID1]?.outputPath == byID1[orphanID1]?.outputPath)
+        #expect(byID2[orphanID2]?.outputPath == byID1[orphanID2]?.outputPath)
+        #expect(vm2.history.count == 4)
+
+        let bytesAfterSecond = try Data(contentsOf: historyURL)
+        #expect(bytesAfterFirst == bytesAfterSecond, "Second startup must not rewrite history.json at all")
+    }
 }
