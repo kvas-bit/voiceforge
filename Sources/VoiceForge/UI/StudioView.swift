@@ -37,7 +37,11 @@ struct StudioView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
-                VoiceForgePill(text: viewModel.isGenerating ? "Generating" : "Ready", accent: viewModel.isGenerating)
+                VoiceForgePill(
+                    text: viewModel.isGenerating
+                        ? viewModel.generationPhase.rawValue.capitalized
+                        : "Ready",
+                    accent: viewModel.isGenerating)
                 Text("\(viewModel.sourceText.count) characters")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)

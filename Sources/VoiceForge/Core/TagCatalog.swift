@@ -15,6 +15,57 @@ public struct AudioTag: Hashable, Sendable, Identifiable {
 }
 
 public enum TagCatalog {
+    /// Normalises tag content for lookup (lowercased, whitespace-collapsed, trimmed).
+    public static func normalizeTagContent(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    }
+
+    /// Returns the canonical alias for a normalized tag label, or nil if unknown.
+    public static func alias(for label: String) -> String? {
+        aliasMap[label]
+    }
+
+    /// Typo correction via Levenshtein distance ≤ 2, returning the single unique
+    /// matching `AudioTag` when there is exactly one candidate within threshold.
+    /// Returns nil for ambiguous, too-short (< 3 chars), or no-match inputs.
+    public static func correct(_ query: String) -> AudioTag? {
+        let q = normalizeTagContent(query)
+        guard q.count >= 3 else { return nil }
+        // Only correct queries that begin with a letter — punctuation-prefixed
+        // content (e.g. inner `[` from double brackets) would produce false
+        // positives by matching the underlying word.
+        guard q.first?.isLetter == true else { return nil }
+        // Exact match (fast path)
+        if let exact = all.first(where: { $0.label.lowercased() == q }) { return exact }
+        // Levenshtein distance ≤ 2, must be unique
+        let candidates = all.filter { $0.label.lowercased().levenshtein(q) <= 2 }
+        return candidates.count == 1 ? candidates.first! : nil
+    }
+
+    /// Returns the raw inner content of every `[...]` tag in `text` that is
+    /// neither in the alias map nor correctable.  Asterisk-delimited tags are
+    /// NOT expanded — callers should pass the compiled prompt if they want
+    /// asterisk-style tags evaluated.
+    public static func unknownTags(in text: String) -> [String] {
+        let pattern = #"\[([^\]]+)\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let nsRange = NSRange(text.startIndex..., in: text)
+        var result: [String] = []
+        for match in regex.matches(in: text, options: [], range: nsRange) {
+            guard match.numberOfRanges > 1,
+                  let tagRange = Range(match.range(at: 1), in: text) else { continue }
+            let raw = String(text[tagRange])
+            let compact = normalizeTagContent(raw)
+            if compact.isEmpty { continue }
+            if aliasMap[compact] != nil { continue }
+            if correct(compact) != nil { continue }
+            result.append(raw)
+        }
+        return result
+    }
+
     public static let all: [AudioTag] = [
         // Voice-related (vocal sounds)
         AudioTag(label: "whispers", alias: "whispering softly and quietly", category: "Voice"),
@@ -89,6 +140,30 @@ public enum TagCatalog {
             .sorted { ($0.1, $0.0.label) < ($1.1, $1.0.label) }
             .prefix(limit)
             .map(\.0)
+    }
+}
+
+// MARK: - Levenshtein distance (file-private, used by TagCatalog.correct)
+
+private extension String {
+    /// Classic Wagner–Fischer Levenshtein distance. Used for typo-tolerant
+    /// tag matching inside `TagCatalog.correct(_:)`.
+    func levenshtein(_ other: String) -> Int {
+        let a = Array(self)
+        let b = Array(other)
+        var dist = [[Int]](repeating: [Int](repeating: 0, count: b.count + 1), count: a.count + 1)
+        for i in 0...a.count { dist[i][0] = i }
+        for j in 0...b.count { dist[0][j] = j }
+        for i in 1...a.count {
+            for j in 1...b.count {
+                if a[i - 1] == b[j - 1] {
+                    dist[i][j] = dist[i - 1][j - 1]
+                } else {
+                    dist[i][j] = Swift.min(dist[i - 1][j] + 1, dist[i][j - 1] + 1, dist[i - 1][j - 1] + 1)
+                }
+            }
+        }
+        return dist[a.count][b.count]
     }
 }
 

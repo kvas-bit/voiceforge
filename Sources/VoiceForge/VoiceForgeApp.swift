@@ -5,17 +5,58 @@ import VoiceForgeCore
 
 @main
 struct VoiceForgeApp: App {
-    @StateObject private var viewModel = AppViewModel()
+    @StateObject private var viewModel: AppViewModel
 
     init() {
-        if ProcessInfo.processInfo.arguments.contains("--uitest-reset-state") {
-            clearUITestState()
+        let vm: AppViewModel
+        if ProcessInfo.processInfo.arguments.contains("--uitest-mock-generation") {
+            // UI-test mode: isolated storage + mock generation that writes
+            // synthetic WAV to a temp root without touching Application Support.
+            let store = HistoryStore(
+                fileURL: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("VoiceForge-UI-Test-\(UUID().uuidString)")
+                    .appendingPathComponent("history.json")
+            )
+            let tempRoot = FileManager.default.temporaryDirectory
+                .appendingPathComponent("VoiceForge-UI-Test-Output")
+            let mockService = SpeechGenerationService.__internalInit(
+                executableURL: nil, renderRoot: tempRoot,
+                fileManager: .default, runner: SpeechGenerationService.launchProcess,
+                usePersistent: false,
+                mockGenerate: { request in
+                    // Write a minimal silent WAV and return a fake result.
+                    let outURL = try SpeechGenerationService.__tempOutputURL(forID: request.id, under: tempRoot)
+                    try FileManager.default.createDirectory(at: outURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true)
+                    let header = Data([
+                        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00,
+                        0x57, 0x41, 0x56, 0x45, 0x66, 0x6D, 0x74, 0x20,
+                        0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+                        0x40, 0x1F, 0x00, 0x00, 0x80, 0x3E, 0x00, 0x00,
+                        0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61,
+                        0x00, 0x00, 0x00, 0x00
+                    ])
+                    try header.write(to: outURL)
+                    return GenerationResult(formattedPrompt: "[mock] \(request.sourceText)",
+                        outputURL: outURL, standardOutput: "", standardError: "")
+                }
+            )
+            let testDefaults = UserDefaults(suiteName: "VoiceForgeUITest-\(UUID().uuidString)")!
+            testDefaults.removePersistentDomain(forName: "VoiceForgeUITest-\(UUID().uuidString)")
+            vm = AppViewModel(defaults: testDefaults, historyStore: store,
+                              generationService: mockService)
+        } else {
+            vm = AppViewModel()
         }
+        _viewModel = StateObject(wrappedValue: vm)
     }
 
     var body: some Scene {
         WindowGroup("VoiceForge", id: "main") {
             rootContent
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    Task { await viewModel.shutdownService() }
+                }
         }
         .defaultSize(width: 1320, height: 860)
         .windowStyle(.hiddenTitleBar)
@@ -39,34 +80,6 @@ struct VoiceForgeApp: App {
         } else {
             base.background(.regularMaterial)
         }
-    }
-
-    private func clearUITestState() {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: VoiceForgeStorageKeys.referenceAudioPath)
-        defaults.removeObject(forKey: VoiceForgeStorageKeys.referenceText)
-        defaults.removeObject(forKey: VoiceForgeStorageKeys.emotionText)
-        defaults.removeObject(forKey: VoiceForgeStorageKeys.voicePresets)
-
-        if let bundleIdentifier = Bundle.main.bundleIdentifier {
-            defaults.removePersistentDomain(forName: bundleIdentifier)
-        }
-
-        let baseDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let historyURL = baseDirectory?
-            .appendingPathComponent("VoiceForge", isDirectory: true)
-            .appendingPathComponent("history.json")
-
-        if let historyURL {
-            try? FileManager.default.removeItem(at: historyURL)
-        }
-
-        let savedStateURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Saved Application State", isDirectory: true)
-            .appendingPathComponent("com.kaviantoniovasudeo.VoiceForge.savedState", isDirectory: true)
-
-        try? FileManager.default.removeItem(at: savedStateURL)
     }
 }
 

@@ -5,9 +5,17 @@ import VoiceForgeCore
 
 struct PlaybackDockView: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @State private var scrubTarget: TimeInterval?
 
     private var currentTitle: String {
-        if viewModel.isGenerating { return "Generating…" }
+        if viewModel.isGenerating {
+            switch viewModel.generationPhase {
+            case .prewarming: return "Prewarming…"
+            case .generating: return "Generating…"
+            case .validating: return "Validating…"
+            default: return "Working…"
+            }
+        }
         if let lastOutputURL = viewModel.lastOutputURL {
             let outputPath = lastOutputURL.path
             if let item = viewModel.history.first(where: { $0.outputPath == outputPath }) {
@@ -18,29 +26,59 @@ struct PlaybackDockView: View {
         return "No render yet"
     }
 
+    private var timeString: String {
+        let t = viewModel.audioPlayer.currentTime
+        let d = viewModel.audioPlayer.duration
+        if d > 0 {
+            return "\(formatTime(t)) / \(formatTime(d))"
+        }
+        return formatTime(t)
+    }
+
     var body: some View {
         HStack(spacing: 14) {
+            // Play/Pause
             Button {
-                viewModel.audioPlayer.togglePlayback()
+                if let url = viewModel.lastOutputURL {
+                    try? viewModel.audioPlayer.play(url: url)
+                }
             } label: {
                 Image(systemName: viewModel.audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 36))
-                    .foregroundStyle(viewModel.lastOutputURL == nil ? VoiceForgeTheme.tertiaryText : VoiceForgeTheme.accent)
+                    .foregroundStyle(viewModel.lastOutputURL == nil
+                        ? VoiceForgeTheme.tertiaryText : VoiceForgeTheme.accent)
             }
             .buttonStyle(.plain)
             .disabled(viewModel.lastOutputURL == nil)
             .accessibilityIdentifier("playOutputButton")
 
+            // Title + waveform
             VStack(alignment: .leading, spacing: 4) {
                 Text(currentTitle)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(VoiceForgeTheme.primaryText)
                     .lineLimit(1)
-                WaveformView(active: viewModel.audioPlayer.isPlaying || viewModel.isGenerating)
-                    .frame(height: 26)
+
+                WaveformTimelineView(
+                    waveform: viewModel.audioPlayer.waveform,
+                    progress: viewModel.audioPlayer.duration > 0
+                        ? viewModel.audioPlayer.currentTime / viewModel.audioPlayer.duration
+                        : 0,
+                    isActive: viewModel.audioPlayer.isPlaying || viewModel.isGenerating,
+                    onSeek: { fraction in
+                        let target = fraction * viewModel.audioPlayer.duration
+                        viewModel.audioPlayer.seek(to: target)
+                    }
+                )
+                .frame(height: 30)
+
+                Text(timeString)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(VoiceForgeTheme.tertiaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            // Actions
             HStack(spacing: 6) {
                 if viewModel.isGenerating {
                     Button(role: .destructive) {
@@ -90,30 +128,61 @@ struct PlaybackDockView: View {
                 .frame(height: 1)
         }
     }
+
+    private func formatTime(_ t: TimeInterval) -> String {
+        let m = Int(t) / 60
+        let s = Int(t) % 60
+        return String(format: "%d:%02d", m, s)
+    }
 }
 
-private struct WaveformView: View {
-    let active: Bool
-    private let bars = Array(0..<64)
+// MARK: - Waveform timeline with seek
+
+struct WaveformTimelineView: View {
+    let waveform: [Float]
+    let progress: Double
+    let isActive: Bool
+    let onSeek: (Double) -> Void
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            GeometryReader { geo in
-                let barWidth = max((geo.size.width - CGFloat(bars.count - 1) * 2) / CGFloat(bars.count), 1)
-                HStack(spacing: 2) {
-                    ForEach(bars, id: \.self) { i in
-                        let phase = Double(i) * 0.4 + time * (active ? 5 : 0)
-                        let h = active
-                            ? (sin(phase) * 0.4 + 0.55) * geo.size.height
-                            : (0.25 + sin(Double(i) * 0.6) * 0.1) * geo.size.height
-                        RoundedRectangle(cornerRadius: 1, style: .continuous)
-                            .fill(active ? VoiceForgeTheme.accent : VoiceForgeTheme.tertiaryText.opacity(0.45))
-                            .frame(width: barWidth, height: max(2, h))
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let barCount = waveform.isEmpty ? 64 : waveform.count
+
+            ZStack(alignment: .leading) {
+                // Waveform bars
+                HStack(spacing: 1) {
+                    let barWidth = max(1, (w - CGFloat(barCount - 1)) / CGFloat(barCount))
+                    ForEach(0..<barCount, id: \.self) { i in
+                        let value: Float = waveform.isEmpty
+                            ? sin(Float(i) * 0.1) * 0.3 + 0.4
+                            : waveform[i]
+                        let barH = max(2, CGFloat(value) * h)
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Double(i) / Double(barCount) <= progress
+                                ? VoiceForgeTheme.accent
+                                : VoiceForgeTheme.tertiaryText.opacity(0.35))
+                            .frame(width: barWidth, height: barH)
+                            .frame(maxHeight: .infinity, alignment: .center)
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .center)
+
+                // Progress indicator
+                Rectangle()
+                    .fill(VoiceForgeTheme.accent.opacity(0.3))
+                    .frame(width: 2)
+                    .offset(x: w * progress)
+                    .allowsHitTesting(false)
             }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        let frac = max(0, min(1, v.location.x / w))
+                        onSeek(frac)
+                    }
+            )
         }
     }
 }

@@ -4,7 +4,9 @@ public enum SpeechGenerationError: LocalizedError, Sendable {
     case missingText
     case missingReferenceAudio
     case missingReferenceText
+    case missingExecutable([String])
     case shellFailure(String)
+    case invalidWAV(String)
 
     public var errorDescription: String? {
         switch self {
@@ -14,20 +16,151 @@ public enum SpeechGenerationError: LocalizedError, Sendable {
             return "Choose a reference audio file."
         case .missingReferenceText:
             return "Enter the reference transcript."
+        case .missingExecutable(let searched):
+            let list = searched.map { "  • \($0)" }.joined(separator: "\n")
+            return "mlx-speech not found. Searched:\n\(list)"
         case .shellFailure(let message):
             return message
+        case .invalidWAV(let detail):
+            return detail
         }
     }
 }
 
-public struct SpeechGenerationService: Sendable {
+/// Direct process-engine for Fish Audio S2 Pro via `mlx-speech`.
+/// Prefers a persistent Python helper that loads the model once and serves
+/// sequential requests. Falls back to direct CLI if the helper cannot start.
+///
+/// Reference-typed so one instance can be injected and shared across all
+/// generation paths without value-copy hazards.
+public final class SpeechGenerationService: @unchecked Sendable {
+
+    // MARK: - Configuration
+
+    private let executableURL: URL?
+    private let renderRoot: URL?
+    private nonisolated(unsafe) let fileManager: FileManager
+
+    /// Internal runner for tests only; production uses `Self.launchProcess`.
+    let runner: @Sendable (URL, [String], ProcessBox) async throws -> (stdout: String, stderr: String, exitCode: Int32)
+
+    /// Optional persistent coordinator. Lazily created on first `generate()`.
+    /// Access is serialized through the actor.
+    private let usePersistent: Bool
+    private let coordinatorRegistry: CoordinatorRegistry
+
+    /// Mock generation closure for UI tests. When set, `generate()` calls this
+    /// instead of running any real process. Writes a synthetic WAV to the output
+    /// path and returns a `GenerationResult`.
+    private let mockGenerate: (@Sendable (GenerationRequest) async throws -> GenerationResult)?
+
     private let formatter = PromptFormatter()
 
-    public init() {}
+    // MARK: - Init
 
-    /// Root directory used for all VoiceForge renders. Lives under the user's
-    /// Application Support folder so the files are user-visible (Finder shows it
-    /// under `Library/Application Support`) and don't litter `$HOME`.
+    /// Production initializer. The persistent helper is resolved lazily — the
+    /// mlx-speech path is discovered on first `prewarm()` or `generate()`.
+    public init() {
+        self.executableURL = nil
+        self.renderRoot = nil
+        self.fileManager = .default
+        self.runner = Self.launchProcess
+        self.usePersistent = true
+        self.mockGenerate = nil
+        self.coordinatorRegistry = Self.makeCoordinatorRegistry(
+            executableURL: nil, fileManager: .default)
+    }
+
+    /// Full injection initializer for tests. Not public.
+    init(
+        executableURL: URL? = nil,
+        renderRoot: URL? = nil,
+        fileManager: FileManager = .default,
+        runner: (@Sendable (URL, [String], ProcessBox) async throws -> (stdout: String, stderr: String, exitCode: Int32))? = nil,
+        usePersistent: Bool = false,
+        mockGenerate: (@Sendable (GenerationRequest) async throws -> GenerationResult)? = nil,
+        coordinatorRegistry: CoordinatorRegistry? = nil
+    ) {
+        self.executableURL = executableURL
+        self.renderRoot = renderRoot
+        self.fileManager = fileManager
+        self.runner = runner ?? Self.launchProcess
+        self.usePersistent = usePersistent
+        self.mockGenerate = mockGenerate
+        self.coordinatorRegistry = coordinatorRegistry ?? Self.makeCoordinatorRegistry(
+            executableURL: executableURL, fileManager: fileManager)
+    }
+
+    static func __internalInit(
+        executableURL: URL?,
+        renderRoot: URL?,
+        fileManager: FileManager,
+        runner: @Sendable @escaping (URL, [String], ProcessBox) async throws -> (stdout: String, stderr: String, exitCode: Int32),
+        usePersistent: Bool,
+        mockGenerate: (@Sendable (GenerationRequest) async throws -> GenerationResult)? = nil,
+        coordinatorRegistry: CoordinatorRegistry? = nil
+    ) -> SpeechGenerationService {
+        return SpeechGenerationService(
+            executableURL: executableURL, renderRoot: renderRoot,
+            fileManager: fileManager, runner: runner,
+            usePersistent: usePersistent, mockGenerate: mockGenerate,
+            coordinatorRegistry: coordinatorRegistry
+        )
+    }
+
+    /// Convenience for mock output URL under a given root.
+    static func __tempOutputURL(forID id: UUID, under root: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root.appendingPathComponent("\(id.uuidString).wav")
+    }
+
+    private static func makeCoordinatorRegistry(
+        executableURL: URL?,
+        fileManager: FileManager
+    ) -> CoordinatorRegistry {
+        let fallbackPath = defaultHelperPath(mlxExecutable: nil)
+        let resolver: CoordinatorRegistry.Resolver = { fm in
+            let exeURL = executableURL ?? Self.discoverMLXSpeech(fileManager: fm)
+            guard let mlxURL = exeURL else { return nil }
+            guard let pythonURL = ShebangParser.resolvePython(mlxPath: mlxURL.path, fileManager: fm) else { return nil }
+            let path = defaultHelperPath(mlxExecutable: mlxURL)
+            return (pythonURL, path)
+        }
+        return CoordinatorRegistry(resolver: resolver, fallbackHelperPath: fallbackPath, fileManager: fileManager)
+    }
+
+    private static func defaultHelperPath(mlxExecutable: URL?) -> String {
+        #if SWIFT_PACKAGE
+        return Bundle.module.path(forResource: "mlx_persistent_server", ofType: "py") ?? ""
+        #else
+        if let bundlePath = Bundle.main.path(forResource: "mlx_persistent_server", ofType: "py") {
+            return bundlePath
+        }
+        let exeURL = mlxExecutable ?? URL(fileURLWithPath: "/usr/bin/env")
+        return exeURL.deletingLastPathComponent()
+            .appendingPathComponent("mlx_persistent_server.py").path
+        #endif
+    }
+
+    // MARK: - Output URLs
+
+    public func renderRootDirectory() throws -> URL {
+        if let root = renderRoot {
+            return root
+        }
+        let base = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return base.appendingPathComponent("VoiceForge", isDirectory: true)
+    }
+
+    public func defaultOutputURL() throws -> URL {
+        try renderRootDirectory().appendingPathComponent("voiceforge_output.wav")
+    }
+
     public static func renderRootDirectory(
         applicationSupport: URL? = nil
     ) throws -> URL {
@@ -40,22 +173,29 @@ public struct SpeechGenerationService: Sendable {
         return base.appendingPathComponent("VoiceForge", isDirectory: true)
     }
 
-    /// Legacy "single file" output. Kept for back-compat with the Settings copy
-    /// but no longer used by the per-id render path.
     public func defaultOutputURL(applicationSupport: URL? = nil) throws -> URL {
         try Self.renderRootDirectory(applicationSupport: applicationSupport)
             .appendingPathComponent("voiceforge_output.wav")
     }
 
-    /// Per-generation unique output URL: `<App Support>/VoiceForge/outputs/<uuid>.wav`.
-    /// Keeps every render addressable by its history entry so they never collide.
-    public func outputURL(forID id: UUID, applicationSupport: URL? = nil) throws -> URL {
+    public func outputURL(forID id: UUID) throws -> URL {
+        try renderRootDirectory()
+            .appendingPathComponent("outputs", isDirectory: true)
+            .appendingPathComponent("\(id.uuidString).wav")
+    }
+
+    public func outputURL(forID id: UUID, applicationSupport: URL?) throws -> URL {
         try Self.renderRootDirectory(applicationSupport: applicationSupport)
             .appendingPathComponent("outputs", isDirectory: true)
             .appendingPathComponent("\(id.uuidString).wav")
     }
 
-    public func command(
+    // MARK: - Argument builder
+
+    /// Builds an argv array for `mlx-speech tts`. Every element is literal —
+    /// no shell quoting or interpolation. Edit flags are only included for
+    /// models that support them (not Fish S2 Pro).
+    public func arguments(
         formattedText: String,
         referenceAudioPath: String,
         referenceText: String,
@@ -64,237 +204,391 @@ public struct SpeechGenerationService: Sendable {
         maxNewTokens: Int? = nil,
         editType: String? = nil,
         editInfo: String? = nil
-    ) -> String {
-        var parts: [String] = [
-            "mlx-speech",
-            "tts",
-            "--model",
-            model,
-            "--text",
-            shellQuote(formattedText),
-            "--reference-audio",
-            shellQuote(referenceAudioPath),
-            "--reference-text",
-            shellQuote(referenceText),
-            "-o",
-            shellQuote(outputURL.path)
+    ) -> [String] {
+        var args: [String] = [
+            "--model", model,
+            "--text", formattedText,
+            "--reference-audio", referenceAudioPath,
+            "--reference-text", referenceText,
+            "-o", outputURL.path
         ]
         if let maxNewTokens {
-            parts.append(contentsOf: ["--max-new-tokens", String(maxNewTokens)])
+            args.append(contentsOf: ["--max-new-tokens", String(maxNewTokens)])
         }
-        if let editType, !editType.isEmpty {
-            parts.append(contentsOf: ["--edit-type", editType])
+        // Fish S2 Pro does not accept Step-Audio edit flags.
+        if model != "fish-s2-pro" {
+            if let editType, !editType.isEmpty {
+                args.append(contentsOf: ["--edit-type", editType])
+            }
+            if let editInfo, !editInfo.isEmpty {
+                args.append(contentsOf: ["--edit-info", editInfo])
+            }
         }
-        if let editInfo, !editInfo.isEmpty {
-            parts.append(contentsOf: ["--edit-info", shellQuote(editInfo)])
-        }
-        return parts.joined(separator: " ")
+        return args
     }
+
+    public static func describeCommand(executable: String, arguments: [String]) -> String {
+        let quoted = arguments.map { arg in
+            if arg.contains(" ") || arg.contains("\"") || arg.contains("$") || arg.contains("`") {
+                let escaped = arg.replacingOccurrences(of: "\"", with: "\\\"")
+                return "\"\(escaped)\""
+            }
+            return arg
+        }
+        return ([executable] + quoted).joined(separator: " ")
+    }
+
+    // MARK: - Discovery
+
+    public static func discoverMLXSpeech(
+        homeDirectory: String = NSHomeDirectory(),
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let candidates = [
+            homeDirectory + "/.local/bin/mlx-speech",
+            "/opt/homebrew/bin/mlx-speech",
+            "/usr/local/bin/mlx-speech"
+        ] + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin")
+            .split(separator: ":")
+            .map { $0 + "/mlx-speech" }
+
+        for path in candidates {
+            let url = URL(fileURLWithPath: path)
+            var isDir: ObjCBool = false
+            if fileManager.fileExists(atPath: path, isDirectory: &isDir),
+               !isDir.boolValue,
+               fileManager.isExecutableFile(atPath: path) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    private static func discoverySearchPaths(
+        homeDirectory: String = NSHomeDirectory()
+    ) -> [String] {
+        [
+            homeDirectory + "/.local/bin/mlx-speech",
+            "/opt/homebrew/bin/mlx-speech",
+            "/usr/local/bin/mlx-speech"
+        ] + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin")
+            .split(separator: ":")
+            .map { $0 + "/mlx-speech" }
+    }
+
+    // MARK: - Lifecycle
+
+    /// Prewarms the persistent helper (loads model once). Call once at app start.
+    /// Returns `true` if the helper is ready; `false` means CLI fallback will be used.
+    public func prewarmPersistentHelper() async -> Bool {
+        guard usePersistent else { return false }
+        let c = coordinatorRegistry.getOrCreate()
+        return await c.prewarmOnce()
+    }
+
+    /// Shuts down the persistent helper.
+    public func shutdownPersistentHelper() async {
+        await coordinatorRegistry.shutdownCurrent()
+    }
+
+    // MARK: - Generate
 
     public func generate(request: GenerationRequest) async throws -> GenerationResult {
         let sourceText = request.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
         let referenceAudioPath = request.referenceAudioPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let referenceText = request.referenceText.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !sourceText.isEmpty else {
-            throw SpeechGenerationError.missingText
-        }
-        guard !referenceAudioPath.isEmpty else {
-            throw SpeechGenerationError.missingReferenceAudio
-        }
-        guard !referenceText.isEmpty else {
-            throw SpeechGenerationError.missingReferenceText
-        }
+        guard !sourceText.isEmpty else { throw SpeechGenerationError.missingText }
+        guard !referenceAudioPath.isEmpty else { throw SpeechGenerationError.missingReferenceAudio }
+        guard !referenceText.isEmpty else { throw SpeechGenerationError.missingReferenceText }
+
+        // Mock path — writes synthetic WAV immediately.
+        if let mock = mockGenerate { return try await mock(request) }
 
         let formattedPrompt = formatter.format(text: sourceText, emotion: request.emotionText)
         let outputURL = try outputURL(forID: request.id)
         try ensureOutputDirectoryExists(for: outputURL)
 
-        if ProcessInfo.processInfo.arguments.contains("--uitest-mock-generation") {
-            try writeMockWAV(to: outputURL)
-            return GenerationResult(
-                formattedPrompt: formattedPrompt,
-                outputURL: outputURL,
-                standardOutput: "Mock UI test generation completed.",
-                standardError: ""
-            )
+        // Only try persistent when enabled.
+        if usePersistent {
+            let coordinator = coordinatorRegistry.getOrCreate()
+            let helperReady = await coordinator.prewarmOnce()
+            if helperReady {
+                do {
+                    // Try persistent path. Only pre-accept failures reach CLI fallback.
+                    return try await withTaskCancellationHandler {
+                        let resultPath = try await coordinator.generate(
+                            id: request.id.uuidString,
+                            text: formattedPrompt,
+                            referenceAudio: referenceAudioPath,
+                            referenceText: referenceText,
+                            output: outputURL.path,
+                            maxNewTokens: request.maxNewTokens
+                        )
+                        try validateWAVOutput(at: outputURL)
+                        return GenerationResult(
+                            formattedPrompt: formattedPrompt,
+                            outputURL: URL(fileURLWithPath: resultPath),
+                            standardOutput: "",
+                            standardError: ""
+                        )
+                    } onCancel: {
+                        Task {
+                            await coordinatorRegistry.shutdownCurrent()
+                            try? fileManager.removeItem(at: outputURL)
+                        }
+                    }
+                } catch PersistentError.preAcceptFailure, PersistentError.notReady {
+                    // Helper failed before accepting, or a request queued behind
+                    // a just-cancelled one found the helper torn down — fall
+                    // through to CLI unless the task was already cancelled.
+                    try Task.checkCancellation()
+                    await coordinatorRegistry.shutdownCurrent()
+                } catch is CancellationError {
+                    try? fileManager.removeItem(at: outputURL)
+                    throw CancellationError()
+                } catch {
+                    // Post-accept or other error — clean up and propagate.
+                    // If the task was cancelled, surface CancellationError instead.
+                    if Task.isCancelled {
+                        try? fileManager.removeItem(at: outputURL)
+                        throw CancellationError()
+                    }
+                    try? fileManager.removeItem(at: outputURL)
+                    throw error
+                }
+            }
         }
 
-        let shellCommand = command(
+        // Only pre-accept failures reach here — fall back to CLI.
+        let exeURL = try resolveExecutable()
+        let argv = arguments(
             formattedText: formattedPrompt,
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
             outputURL: outputURL,
-            model: request.model,
-            maxNewTokens: request.maxNewTokens,
-            editType: request.editType,
-            editInfo: request.editInfo
+            maxNewTokens: request.maxNewTokens
         )
-
-        let result = try await run(
-            command: shellCommand,
-            formattedPrompt: formattedPrompt,
-            outputURL: outputURL
-        )
-        // Sanity check: the CLI claimed success but if `-o` was ignored or it
-        // crashed mid-write we'd silently add an unplayable history entry. Surface
-        // a clear, actionable error instead.
-        guard FileManager.default.fileExists(atPath: outputURL.path) else {
-            throw SpeechGenerationError.shellFailure(
-                "mlx-speech reported success but no audio file was found at \(outputURL.path)."
+        let ttsArgs = ["tts"] + argv
+        do {
+            let result = try await run(
+                executableURL: exeURL,
+                arguments: ttsArgs,
+                outputURL: outputURL,
+                formattedPrompt: formattedPrompt
             )
+            try validateWAVOutput(at: outputURL)
+            return result
+        } catch {
+            try? fileManager.removeItem(at: outputURL)
+            throw error
         }
-        return result
+    }
+
+    private func resolveExecutable() throws -> URL {
+        if let exe = executableURL {
+            return exe
+        }
+        if let discovered = Self.discoverMLXSpeech() {
+            return discovered
+        }
+        throw SpeechGenerationError.missingExecutable(Self.discoverySearchPaths())
     }
 
     private func ensureOutputDirectoryExists(for outputURL: URL) throws {
         let directory = outputURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    /// Internal so tests can drive cancellation against an arbitrary shell command.
-    /// `formattedPrompt` and `outputURL` are returned in the result for the success path.
-    func run(command: String, formattedPrompt: String, outputURL: URL) async throws -> GenerationResult {
+    // MARK: - Process execution
+
+    package func run(
+        executableURL: URL,
+        arguments: [String],
+        outputURL: URL,
+        formattedPrompt: String = ""
+    ) async throws -> GenerationResult {
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: executableURL.path, isDirectory: &isDir),
+              !isDir.boolValue,
+              fileManager.isExecutableFile(atPath: executableURL.path) else {
+            throw SpeechGenerationError.missingExecutable([executableURL.path])
+        }
+
         let processBox = ProcessBox()
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GenerationResult, Error>) in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let process = Process()
-                    process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                    process.arguments = ["-lc", command]
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
 
-                    let standardOutput = Pipe()
-                    let standardError = Pipe()
-                    process.standardOutput = standardOutput
-                    process.standardError = standardError
-                    processBox.store(process)
-
+                let task = Task.detached(priority: .userInitiated) { [runner, formattedPrompt] in
                     do {
-                        try process.run()
-                        process.waitUntilExit()
-
-                        let stdoutData = standardOutput.fileHandleForReading.readDataToEndOfFile()
-                        let stderrData = standardError.fileHandleForReading.readDataToEndOfFile()
-                        let stdout = String(decoding: stdoutData, as: UTF8.self)
-                        let stderr = String(decoding: stderrData, as: UTF8.self)
-
-                        // If the surrounding Task was cancelled, surface CancellationError
-                        // rather than a shellFailure (the process likely exited via SIGTERM/SIGKILL).
-                        if processBox.wasCancelled {
+                        let (stdout, stderr, exitCode) = try await runner(executableURL, arguments, processBox)
+                        // Check cancellation state under the lock after the runner returns.
+                        if processBox.isCancelled {
                             continuation.resume(throwing: CancellationError())
                             return
                         }
-
-                        if process.terminationStatus == 0 {
-                            continuation.resume(
-                                returning: GenerationResult(
-                                    formattedPrompt: formattedPrompt,
-                                    outputURL: outputURL,
-                                    standardOutput: stdout,
-                                    standardError: stderr
-                                )
-                            )
+                        if exitCode == 0 {
+                            continuation.resume(returning: GenerationResult(
+                                formattedPrompt: formattedPrompt,
+                                outputURL: outputURL,
+                                standardOutput: stdout,
+                                standardError: stderr
+                            ))
                         } else {
                             let message = stderr.isEmpty ? stdout : stderr
-                            continuation.resume(throwing: SpeechGenerationError.shellFailure(message.trimmingCharacters(in: .whitespacesAndNewlines)))
+                            continuation.resume(throwing:
+                                SpeechGenerationError.shellFailure(message.trimmingCharacters(in: .whitespacesAndNewlines)))
                         }
                     } catch {
                         continuation.resume(throwing: error)
                     }
                 }
+                processBox.storeTask(task)
             }
         } onCancel: {
             processBox.cancel()
         }
     }
 
-    private func writeMockWAV(to outputURL: URL) throws {
-        let sampleRate: UInt32 = 44_100
-        let channelCount: UInt16 = 1
-        let bitsPerSample: UInt16 = 16
-        let durationFrames: UInt32 = sampleRate * 3
-        let bytesPerSample = UInt32(bitsPerSample / 8)
-        let dataChunkSize = durationFrames * UInt32(channelCount) * bytesPerSample
-        let riffChunkSize = 36 + dataChunkSize
-        let byteRate = sampleRate * UInt32(channelCount) * bytesPerSample
-        let blockAlign = channelCount * (bitsPerSample / 8)
+    /// The real process launcher. Stores the process before running, checks
+    /// cancellation state under the lock both before and after `process.run()`,
+    /// and starts concurrent pipe readers only on successful launch.
+    static let launchProcess: @Sendable (URL, [String], ProcessBox) async throws -> (stdout: String, stderr: String, exitCode: Int32) = {
+        executableURL, arguments, processBox in
 
-        var data = Data()
-        data.append(contentsOf: Array("RIFF".utf8))
-        data.append(contentsOf: withUnsafeBytes(of: riffChunkSize.littleEndian, Array.init))
-        data.append(contentsOf: Array("WAVE".utf8))
-        data.append(contentsOf: Array("fmt ".utf8))
-        data.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian, Array.init))
-        data.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian, Array.init))
-        data.append(contentsOf: withUnsafeBytes(of: channelCount.littleEndian, Array.init))
-        data.append(contentsOf: withUnsafeBytes(of: sampleRate.littleEndian, Array.init))
-        data.append(contentsOf: withUnsafeBytes(of: byteRate.littleEndian, Array.init))
-        data.append(contentsOf: withUnsafeBytes(of: blockAlign.littleEndian, Array.init))
-        data.append(contentsOf: withUnsafeBytes(of: bitsPerSample.littleEndian, Array.init))
-        data.append(contentsOf: Array("data".utf8))
-        data.append(contentsOf: withUnsafeBytes(of: dataChunkSize.littleEndian, Array.init))
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
 
-        let amplitude = Double(Int16.max) * 0.22
-        let fadeSampleCount = Int(sampleRate / 20)
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
 
-        for frame in 0..<Int(durationFrames) {
-            let time = Double(frame) / Double(sampleRate)
-            let envelope: Double
-            if frame < fadeSampleCount {
-                envelope = Double(frame) / Double(fadeSampleCount)
-            } else if frame > Int(durationFrames) - fadeSampleCount {
-                envelope = Double(Int(durationFrames) - frame) / Double(fadeSampleCount)
-            } else {
-                envelope = 1
-            }
+        processBox.storeProcess(process)
 
-            let section = frame / Int(sampleRate)
-            let frequency: Double
-            switch section {
-            case 0:
-                frequency = 523.25
-            case 1:
-                frequency = 659.25
-            default:
-                frequency = 783.99
-            }
-            let sampleValue = sin(2 * Double.pi * frequency * time) * amplitude * max(0, envelope)
-            let sample = Int16(sampleValue.rounded()).littleEndian
-            data.append(contentsOf: withUnsafeBytes(of: sample, Array.init))
+        // Snapshot cancellation under the lock before launch.
+        if processBox.isCancelled {
+            throw CancellationError()
         }
 
-        try data.write(to: outputURL, options: .atomic)
+        try process.run()
+
+        // Recheck immediately after a successful launch.  If cancellation
+        // arrived between `storeProcess` and `process.run`, the child may
+        // have started but we must terminate it before draining pipes.
+        if processBox.isCancelled {
+            processBox.cancel()
+            throw CancellationError()
+        }
+
+        // Start concurrent readers AFTER successful launch + post-run check.
+        async let stdoutStr = readPipe(stdoutPipe)
+        async let stderrStr = readPipe(stderrPipe)
+
+        let (stdout, stderr) = await (stdoutStr, stderrStr)
+        process.waitUntilExit()
+
+        if processBox.isCancelled {
+            throw CancellationError()
+        }
+        return (stdout, stderr, process.terminationStatus)
     }
 
-    private func shellQuote(_ value: String) -> String {
-        let escaped = value.replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+    private static func readPipe(_ pipe: Pipe) async -> String {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                continuation.resume(returning: String(decoding: data, as: UTF8.self))
+            }
+        }
+    }
+
+    // MARK: - WAV validation
+
+    /// Validates that the file at `outputURL` is a real WAV with RIFF and WAVE
+    /// markers. The error message includes the resolved path for diagnostics.
+    package func validateWAVOutput(at outputURL: URL) throws {
+        let path = outputURL.path
+        guard fileManager.fileExists(atPath: path) else {
+            throw SpeechGenerationError.invalidWAV(
+                "mlx-speech reported success but no audio file was found at \(path)."
+            )
+        }
+        let fileSize = (try? fileManager.attributesOfItem(atPath: path)[.size] as? Int) ?? nil
+        guard let size = fileSize, size >= 44 else {
+            throw SpeechGenerationError.invalidWAV(
+                "Output at \(path) is too small (\(fileSize.map(String.init) ?? "?") bytes) to be a valid WAV (minimum 44 bytes)."
+            )
+        }
+        guard let handle = try? FileHandle(forReadingFrom: outputURL) else {
+            throw SpeechGenerationError.invalidWAV(
+                "Output at \(path) could not be opened for reading."
+            )
+        }
+        defer { try? handle.close() }
+
+        let riff = handle.readData(ofLength: 4)
+        guard riff == Data([0x52, 0x49, 0x46, 0x46]) else {
+            throw SpeechGenerationError.invalidWAV(
+                "Output at \(path) is not a valid WAV file (missing RIFF header)."
+            )
+        }
+
+        // Skip chunk size (4 bytes), then read WAVE marker at offset 8.
+        _ = handle.readData(ofLength: 4)
+        let wave = handle.readData(ofLength: 4)
+        guard wave == Data([0x57, 0x41, 0x56, 0x45]) else {
+            throw SpeechGenerationError.invalidWAV(
+                "Output at \(path) has RIFF header but is not a WAVE file (missing WAVE marker at offset 8)."
+            )
+        }
     }
 }
 
-/// Thread-safe holder so an `onCancel` block running on an arbitrary executor can reach the
-/// in-flight `Process` and signal it. Uses POSIX `kill` because `Process.terminate()` only
-/// delivers SIGTERM; we follow up with SIGKILL after a short grace period.
+// MARK: - ProcessBox (cancellation helper)
+
+/// Thread-safe holder so an `onCancel` block can reach the in-flight `Process`
+/// (or its `Task`) and terminate it. All mutable state is guarded by `NSLock`.
 final class ProcessBox: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
-    private(set) var wasCancelled = false
+    private var innerTask: Task<Void, Never>?
+    private var _cancelled = false
 
-    func store(_ process: Process) {
+    /// Thread-safe cancellation snapshot.
+    var isCancelled: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _cancelled
+    }
+
+    func storeProcess(_ process: Process) {
         lock.lock(); defer { lock.unlock() }
         self.process = process
     }
 
+    func storeTask(_ task: Task<Void, Never>) {
+        lock.lock(); defer { lock.unlock() }
+        innerTask = task
+    }
+
     func cancel() {
         lock.lock()
-        wasCancelled = true
+        _cancelled = true
         let target = process
+        let task = innerTask
         lock.unlock()
 
+        task?.cancel()
+
         guard let target, target.isRunning else { return }
+        target.terminate()
         let pid = target.processIdentifier
-        target.terminate() // SIGTERM
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) {
             if target.isRunning {
                 kill(pid, SIGKILL)

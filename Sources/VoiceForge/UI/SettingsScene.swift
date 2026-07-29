@@ -54,10 +54,8 @@ private struct GenerationSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Defaults") {
-                Picker("Model", selection: $viewModel.model) {
-                    ForEach(viewModel.availableModels, id: \.self) { Text($0).tag($0) }
-                }
+            Section("Model") {
+                LabeledContent("Engine", value: "Fish Audio S2 Pro (persistent)")
                 HStack {
                     Text("Max new tokens")
                     Spacer()
@@ -65,11 +63,7 @@ private struct GenerationSettingsView: View {
                         .font(.system(size: 12, design: .monospaced))
                 }
                 Slider(value: $viewModel.maxNewTokens, in: 256...4096, step: 64)
-            }
-
-            Section("Voice settings (advisory)") {
-                Toggle("Speaker boost", isOn: $viewModel.speakerBoost)
-                Text("Stability, similarity, and style sliders are stored locally and will be applied if a remote ElevenLabs backend is connected. The current mlx-speech backend ignores them.")
+                Text("VoiceForge uses a persistent Python helper that loads the Fish S2 Pro model once and reuses it for all renders. A direct CLI fallback runs only if the helper cannot start.")
                     .font(.system(size: 11))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)
             }
@@ -83,8 +77,7 @@ private struct AdvancedSettingsView: View {
         Form {
             Section("Backend") {
                 LabeledContent("CLI", value: "mlx-speech")
-                LabeledContent("Invocation", value: "/bin/zsh -lc")
-                Text("VoiceForge shells out through /bin/zsh -lc, so mlx-speech needs to be installed and visible to your shell environment before you render.")
+                Text("VoiceForge uses a persistent Python helper that loads the model once, then serves sequential requests over JSON-lines. If the helper cannot start, it falls back to direct CLI invocation (no shell). Stderr is isolated from the protocol stream.")
                     .font(.system(size: 11))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)
             }

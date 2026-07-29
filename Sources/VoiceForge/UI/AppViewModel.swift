@@ -44,6 +44,12 @@ final class AppViewModel: ObservableObject {
     @Published var currentPlayingHistoryID: UUID?
     @Published var isGenerating = false
 
+    /// Current generation phase for indeterminate progress display.
+    enum GenerationPhase: String {
+        case idle, prewarming, generating, validating, completed, failed, cancelled
+    }
+    @Published var generationPhase: GenerationPhase = .idle
+
     /// Sentinel id used by the Studio "loose reference" preview button so the same
     /// `previewingVoiceID` field works for both saved presets and the unbound clip.
     static let looseReferencePreviewID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
@@ -64,10 +70,9 @@ final class AppViewModel: ObservableObject {
     @Published var styleExaggeration: Double = 0.0
     @Published var speakerBoost: Bool = true
 
-    // Backend knobs that DO flow through to `mlx-speech`.
-    @Published var model: String = "fish-s2-pro"
+    // Backend knobs — Fish S2 Pro is the only model. Max tokens and text input
+    // flow through to mlx-speech; edit-type is not used by Fish.
     @Published var maxNewTokens: Double = 1500
-    @Published var editType: String = "none"
 
     // Conversation editor state
     @Published var conversationLines: [ConversationLine] = []
@@ -75,11 +80,19 @@ final class AppViewModel: ObservableObject {
     @Published var conversationIsGenerating: Bool = false
     @Published var conversationPlaybackState: ConversationPlaybackState = .idle
 
+    // Multi-voice script import state
+    /// Paste buffer bound to the "Import script" text editor.
+    @Published var conversationScriptDraft: String = ""
+    /// Unique speaker keys from the last import, in first-appearance order.
+    @Published var conversationSpeakerKeys: [String] = []
+    /// Normalized speaker key → first-used display name from the last import.
+    @Published var conversationSpeakerDisplayNames: [String: String] = [:]
+    /// Validation issues (missing speaker/dialogue) from the last import.
+    @Published var conversationScriptIssues: [ScriptIssue] = []
+
     let conversationPlayer: ConversationPlayer
     private var conversationGenerationTask: Task<Void, Never>?
-
-    let availableModels = ["fish-s2-pro", "moss-tts", "step-audio-tts", "kokoro-multilingual"]
-    let editTypes = ["none", "emotion", "style", "speed", "denoise", "vad", "paralinguistic"]
+    private let scriptParser = ConversationScriptParser()
 
     let quickTags = [
         "[whispers]",
@@ -96,12 +109,18 @@ final class AppViewModel: ObservableObject {
     private let presetStore: VoicePresetStore
     private let historyStore: HistoryStore
     private let formatter = PromptFormatter()
-    private let generationService = SpeechGenerationService()
+    private var generationService: SpeechGenerationService
     let audioPlayer = AudioPlayerController()
     private var cancellables = Set<AnyCancellable>()
     private var generationTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    /// Convenience init for production.
+    convenience init() {
+        self.init(defaults: .standard, historyStore: HistoryStore(), generationService: SpeechGenerationService())
+    }
+
+    /// Designated initializer. All dependencies are explicit.
+    init(defaults: UserDefaults, historyStore: HistoryStore, generationService: SpeechGenerationService = SpeechGenerationService()) {
         self.defaults = defaults
         let environment = ProcessInfo.processInfo.environment
         referenceAudioPath = environment["VOICEFORGE_UITEST_REFERENCE_AUDIO"]
@@ -114,18 +133,22 @@ final class AppViewModel: ObservableObject {
             ?? defaults.string(forKey: VoiceForgeStorageKeys.emotionText)
             ?? ""
         presetStore = VoicePresetStore(defaults: defaults)
-        historyStore = HistoryStore()
+        self.historyStore = historyStore
+        self.generationService = generationService
         presets = presetStore.load()
         conversationPlayer = ConversationPlayer(audioPlayer: audioPlayer)
-        let loaded = historyStore.load()
+        let loaded = self.historyStore.load()
         // One-time cleanup of legacy entries that point at the old shared output
         // file (or that share an outputPath with another entry). Without this,
         // pre-migration histories cause every row to play the latest render and
         // every play button to light up at once.
-        let migration = HistoryStore.migrateLegacyEntries(loaded)
-        history = migration.items.sorted(by: { $0.createdAt > $1.createdAt })
+        let migration = self.historyStore.migrateLegacy(loaded)
+        history = migration.items.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+            return $0.outputPath < $1.outputPath
+        }
         if migration.summary.relocated + migration.summary.dropped > 0 {
-            historyStore.save(history)
+            self.historyStore.save(history)
             print("[VoiceForge] history migration: relocated=\(migration.summary.relocated) dropped=\(migration.summary.dropped) unchanged=\(migration.summary.unchanged)")
         }
         sourceText = environment["VOICEFORGE_UITEST_SOURCE_TEXT"] ?? ""
@@ -150,6 +173,14 @@ final class AppViewModel: ObservableObject {
             }
             .store(in: &cancellables)
         refreshPreview()
+
+        // Prewarm the persistent helper in the background.
+        let svc = generationService
+        Task { _ = await svc.prewarmPersistentHelper() }
+    }
+
+    func shutdownService() async {
+        await generationService.shutdownPersistentHelper()
     }
 
     var formattedPreview: String {
@@ -157,7 +188,7 @@ final class AppViewModel: ObservableObject {
     }
 
     var outputLocationDescription: String {
-        let root = (try? SpeechGenerationService.renderRootDirectory().appendingPathComponent("outputs").path)
+        let root = (try? generationService.renderRootDirectory().appendingPathComponent("outputs").path)
         return root ?? "~/Library/Application Support/VoiceForge/outputs"
     }
 
@@ -250,6 +281,7 @@ final class AppViewModel: ObservableObject {
         cliOutput = ""
         refreshPreview()
         isGenerating = true
+        generationPhase = .prewarming
 
         let requestID = UUID()
         pendingGenerationID = requestID
@@ -260,18 +292,19 @@ final class AppViewModel: ObservableObject {
             emotionText: emotionText,
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
-            model: model,
-            maxNewTokens: Int(maxNewTokens),
-            editType: editType == "none" ? nil : editType,
-            editInfo: nil
+            model: "fish-s2-pro",
+            maxNewTokens: Int(maxNewTokens)
         )
         let service = generationService
 
         generationTask?.cancel()
         generationTask = Task { [weak self] in
             do {
+                await MainActor.run { self?.generationPhase = .generating }
                 let result = try await service.generate(request: request)
                 if Task.isCancelled { return }
+                await MainActor.run { self?.generationPhase = .validating }
+                // Service already validates WAV internally; no separate step needed.
                 await MainActor.run {
                     self?.completeGeneration(result, id: requestID)
                 }
@@ -280,6 +313,7 @@ final class AppViewModel: ObservableObject {
                     self?.isGenerating = false
                     self?.pendingGenerationID = nil
                     self?.generationError = ""
+                    self?.generationPhase = .cancelled
                     self?.cliOutput = "Generation cancelled."
                 }
             } catch {
@@ -287,6 +321,7 @@ final class AppViewModel: ObservableObject {
                     self?.isGenerating = false
                     self?.pendingGenerationID = nil
                     self?.generationError = error.localizedDescription
+                    self?.generationPhase = .failed
                 }
             }
         }
@@ -328,6 +363,8 @@ final class AppViewModel: ObservableObject {
     func cancelGeneration() {
         generationTask?.cancel()
         generationTask = nil
+        generationPhase = .cancelled
+        isGenerating = false
     }
 
     func renameHistory(_ item: GenerationHistoryItem, to newName: String) {
@@ -587,6 +624,7 @@ final class AppViewModel: ObservableObject {
 
     private func completeGeneration(_ result: GenerationResult, id: UUID) {
         isGenerating = false
+        generationPhase = .completed
         pendingGenerationID = nil
         lastFormattedPrompt = result.formattedPrompt
         lastOutputURL = result.outputURL
@@ -644,6 +682,60 @@ final class AppViewModel: ObservableObject {
         conversationLines[index].referenceText = preset.referenceText
     }
 
+    // MARK: - Multi-voice script import
+
+    /// Parses a pasted multi-voice script and replaces the current conversation
+    /// with one line per speaker turn, each tagged with its `speakerKey` so a
+    /// single voice assignment (`assignPresetToSpeaker`) can fan out to every
+    /// line spoken by that character. Voice fields start empty — `generateConversation()`
+    /// already refuses to run until every line has a complete voice setup, so
+    /// nothing generates with a missing binding.
+    func importConversationScript(_ script: String) {
+        let result = scriptParser.parse(script)
+        conversationLines = scriptParser.makeConversationLines(from: result.segments)
+        conversationSpeakerKeys = result.speakerKeys
+        conversationSpeakerDisplayNames = result.speakerDisplay
+        conversationScriptIssues = result.issues
+        conversationName = ""
+        conversationPlayer.stop()
+    }
+
+    /// Assigns a saved preset's voice to every current line spoken by `speakerKey`.
+    func assignPresetToSpeaker(_ preset: VoicePreset, speakerKey: String) {
+        for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
+            conversationLines[i].referenceAudioPath = preset.referenceAudioPath
+            conversationLines[i].referenceText = preset.referenceText
+        }
+    }
+
+    /// Assigns a manual (non-preset) reference clip/transcript to every current
+    /// line spoken by `speakerKey`.
+    func assignReferenceToSpeaker(referenceAudioPath: String, referenceText: String, speakerKey: String) {
+        for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
+            conversationLines[i].referenceAudioPath = referenceAudioPath
+            conversationLines[i].referenceText = referenceText
+        }
+    }
+
+    /// The voice currently bound to `speakerKey`, read from its first matching
+    /// line — `nil` if that speaker has no lines or hasn't been assigned yet.
+    func voiceBinding(forSpeakerKey speakerKey: String) -> SpeakerVoiceBinding? {
+        guard let line = conversationLines.first(where: { $0.speakerKey == speakerKey }),
+              !line.referenceAudioPath.isEmpty else { return nil }
+        return SpeakerVoiceBinding(referenceAudioPath: line.referenceAudioPath, referenceText: line.referenceText)
+    }
+
+    /// True once every speaker introduced by the last import has a complete
+    /// voice setup on all of their lines. Empty-speaker-list conversations
+    /// (manually built, not imported) are trivially true here.
+    var allSpeakersAssigned: Bool {
+        conversationSpeakerKeys.allSatisfy { key in
+            conversationLines
+                .filter { $0.speakerKey == key }
+                .allSatisfy { !$0.referenceAudioPath.isEmpty && !$0.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+    }
+
     func applyCurrentReferenceToConversationLine(at index: Int) {
         guard index >= 0, index < conversationLines.count else { return }
         conversationLines[index].referenceAudioPath = referenceAudioPath
@@ -686,7 +778,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func generateConversationLines() async {
-        let service = SpeechGenerationService()
+        let service = generationService
 
         for i in 0..<conversationLines.count {
             if Task.isCancelled {
@@ -709,10 +801,7 @@ final class AppViewModel: ObservableObject {
                 emotionText: "",
                 referenceAudioPath: line.referenceAudioPath,
                 referenceText: line.referenceText,
-                model: model,
-                maxNewTokens: Int(maxNewTokens),
-                editType: editType == "none" ? nil : editType,
-                editInfo: nil
+                maxNewTokens: Int(maxNewTokens)
             )
 
             do {
@@ -757,6 +846,10 @@ final class AppViewModel: ObservableObject {
         cancelConversationGeneration()
         conversationLines = []
         conversationName = ""
+        conversationScriptDraft = ""
+        conversationSpeakerKeys = []
+        conversationSpeakerDisplayNames = [:]
+        conversationScriptIssues = []
         conversationPlayer.stop()
     }
 
@@ -768,7 +861,7 @@ final class AppViewModel: ObservableObject {
 
         // Create conversation output directory
         let conversationID = UUID()
-        guard let outputsDir = try? SpeechGenerationService.renderRootDirectory()
+        guard let outputsDir = try? generationService.renderRootDirectory()
             .appendingPathComponent("outputs") else {
             generationError = "Could not create a storage directory for this conversation."
             return
@@ -782,9 +875,9 @@ final class AppViewModel: ObservableObject {
             createdAt: Date(),
             name: name,
             lines: linesCopy,
-            globalModel: model,
+            globalModel: "fish-s2-pro",
             globalMaxNewTokens: Int(maxNewTokens),
-            globalEditType: editType
+            globalEditType: "none"
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -821,9 +914,7 @@ final class AppViewModel: ObservableObject {
         conversationPlayer.stop()
         conversationLines = conversation.lines
         conversationName = conversation.name
-        model = conversation.globalModel
         maxNewTokens = Double(conversation.globalMaxNewTokens)
-        editType = conversation.globalEditType
         destination = .conversations
     }
 
@@ -869,9 +960,9 @@ final class AppViewModel: ObservableObject {
             return ConversationItem(
                 name: item.name,
                 lines: lines,
-                globalModel: model,
+                globalModel: "fish-s2-pro",
                 globalMaxNewTokens: Int(maxNewTokens),
-                globalEditType: editType
+                globalEditType: "none"
             )
         }
 

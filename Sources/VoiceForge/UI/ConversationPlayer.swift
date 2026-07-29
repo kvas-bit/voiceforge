@@ -11,6 +11,7 @@ public enum ConversationPlaybackState: Equatable {
     case finished
 }
 
+@MainActor
 public final class ConversationPlayer: ObservableObject {
     @Published public private(set) var state: ConversationPlaybackState = .idle
     @Published public private(set) var currentLineIndex: Int?

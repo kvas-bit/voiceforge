@@ -38,6 +38,11 @@ public final class HistoryStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
+    /// The VoiceForge directory that contains `history.json` and the `outputs/` folder.
+    /// Every storage operation (load, save, recovery, migration, delete, clear) uses
+    /// this root so a custom `fileURL` never reaches the real Application Support tree.
+    var storageRoot: URL { fileURL.deletingLastPathComponent() }
+
     public init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
         let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -47,6 +52,9 @@ public final class HistoryStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
+    /// Construct a `HistoryStore` whose manifest and recovery root are pinned to the
+    /// directory containing `fileURL`. The `outputs/` scan during load always uses
+    /// `fileURL.deletingLastPathComponent()` as the VoiceForge root.
     public init(fileURL: URL, fileManager: FileManager = .default) {
         self.fileURL = fileURL
         self.fileManager = fileManager
@@ -56,14 +64,22 @@ public final class HistoryStore {
 
     public func load() -> [GenerationHistoryItem] {
         guard let data = try? Data(contentsOf: fileURL) else {
-            let recovered = Self.recoverEntriesFromDisk(existing: [], fileManager: fileManager)
+            let recovered = Self.recoverEntriesFromDisk(
+                existing: [],
+                applicationSupport: storageRoot,
+                fileManager: fileManager
+            )
             if !recovered.isEmpty {
                 save(recovered)
             }
             return recovered
         }
         let decoded = (try? decoder.decode([GenerationHistoryItem].self, from: data)) ?? []
-        let recovered = Self.recoverEntriesFromDisk(existing: decoded, fileManager: fileManager)
+        let recovered = Self.recoverEntriesFromDisk(
+            existing: decoded,
+            applicationSupport: storageRoot,
+            fileManager: fileManager
+        )
         if recovered != decoded {
             save(recovered)
         }
@@ -94,13 +110,25 @@ public final class HistoryStore {
 
     private func removeArtifacts(for item: GenerationHistoryItem) {
         let outputURL = URL(fileURLWithPath: item.outputPath)
+            .resolvingSymlinksInPath().standardizedFileURL
+        let root = storageRoot.resolvingSymlinksInPath().standardizedFileURL
+        guard outputURL.path.hasPrefix(root.path + "/") else {
+            // Outside storageRoot — refuse to remove.
+            return
+        }
 
         switch item.type {
         case .single:
             try? fileManager.removeItem(at: outputURL)
         case .conversation:
             let bundleURL = outputURL.hasDirectoryPath ? outputURL : outputURL.deletingLastPathComponent()
-            try? fileManager.removeItem(at: bundleURL)
+            let bundleResolved = bundleURL.resolvingSymlinksInPath().standardizedFileURL
+            // Require the bundle directory—not merely the manifest file—to be a
+            // strict descendant of storageRoot.  If the manifest path is
+            // <storageRoot>/conversation.json the bundle would equal storageRoot
+            // itself, which must never be deleted.
+            guard bundleResolved.path.hasPrefix(root.path + "/") else { return }
+            try? fileManager.removeItem(at: bundleResolved)
         }
     }
 }
@@ -114,6 +142,26 @@ public struct HistoryMigrationSummary: Equatable, Sendable {
 }
 
 extension HistoryStore {
+    /// Returns the canonical path (resolved symlinks + standardized) so that
+    /// `/var/…` and `/private/var/…` (macOS alias spellings) compare equal.
+    /// Used everywhere a path is compared, deduplicated, or used as a map key.
+    private static func normalizedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    /// Instance helper that pins canonical paths under the store's own
+    /// `<storageRoot>/outputs/<id>.wav`. Delegates to the shared root-based
+    /// implementation so the two code paths stay in sync.
+    func migrateLegacy(_ items: [GenerationHistoryItem]) -> (
+        items: [GenerationHistoryItem], summary: HistoryMigrationSummary
+    ) {
+        return Self._migrate(
+            items,
+            voiceForgeRoot: storageRoot,
+            fileManager: fileManager
+        )
+    }
+
     /// Rebuilds history entries from on-disk outputs when `history.json` is
     /// missing or incomplete. This keeps the History screen usable even if the
     /// manifest was truncated or overwritten.
@@ -155,6 +203,18 @@ extension HistoryStore {
                 let existingConversation = existing.first(where: {
                     $0.type == .conversation && $0.conversationLines == manifest.lines
                 })
+                // Preserve the exact saved outputPath only when both paths
+                // resolve to the same physical file — this keeps alias
+                // spellings (/var vs /private/var) stable without repairing
+                // stale entries that point at a WAV instead of the manifest.
+                let preservedPath: String
+                if let existingConv = existingConversation,
+                   URL(fileURLWithPath: existingConv.outputPath).resolvingSymlinksInPath().standardizedFileURL
+                    == url.resolvingSymlinksInPath().standardizedFileURL {
+                    preservedPath = existingConv.outputPath
+                } else {
+                    preservedPath = url.path
+                }
                 let item = GenerationHistoryItem(
                     id: existingConversation?.id ?? manifest.id,
                     createdAt: existingConversation?.createdAt ?? manifest.createdAt,
@@ -163,7 +223,7 @@ extension HistoryStore {
                     formattedPrompt: existingConversation?.formattedPrompt ?? "",
                     referenceAudioPath: manifest.lines.first?.referenceAudioPath ?? "",
                     referenceText: manifest.lines.first?.referenceText ?? "",
-                    outputPath: url.path,
+                    outputPath: preservedPath,
                     type: .conversation,
                     conversationLines: manifest.lines
                 )
@@ -182,7 +242,19 @@ extension HistoryStore {
                 continue
             }
 
-            let existingSingle = existing.first(where: { $0.type == .single && ($0.id == uuid || $0.outputPath == path) })
+            // Match an existing single by UUID (normalizing paths so alias
+            // spellings like /private/var/ vs /var/ don't miss).
+            let normPath = normalizedPath(path)
+            let existingSingle = existing.first(where: { item in
+                item.type == .single && (
+                    item.id == uuid ||
+                    normalizedPath(item.outputPath) == normPath
+                )
+            })
+            // Preserve the saved outputPath when the same physical file is found,
+            // so a read-only recovery doesn't rewrite the manifest purely due to
+            // alias spelling differences.
+            let preservedOutputPath = existingSingle?.outputPath ?? path
             let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
             let createdAt = existingSingle?.createdAt ?? values?.contentModificationDate ?? Date()
             let fallbackText = "Recovered generation"
@@ -194,7 +266,7 @@ extension HistoryStore {
                 formattedPrompt: existingSingle?.formattedPrompt ?? "",
                 referenceAudioPath: existingSingle?.referenceAudioPath ?? "",
                 referenceText: existingSingle?.referenceText ?? "",
-                outputPath: path,
+                outputPath: preservedOutputPath,
                 type: .single,
                 conversationLines: nil
             )
@@ -205,33 +277,31 @@ extension HistoryStore {
             mergedByKey.removeValue(forKey: historyKey(for: item))
         }
 
-        return mergedByKey.values.sorted(by: { $0.createdAt > $1.createdAt })
+        return mergedByKey.values.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+            // Total-order tiebreaker on canonical paths, stable regardless of
+            // dictionary enumeration or filesystem readdir order.
+            return normalizedPath($0.outputPath) < normalizedPath($1.outputPath)
+        }
     }
 
     private static func historyKey(for item: GenerationHistoryItem) -> String {
         switch item.type {
         case .single:
-            return "single:\(item.outputPath)"
+            return "single:\(normalizedPath(item.outputPath))"
         case .conversation:
             if let lines = item.conversationLines {
                 return "conversation:\(lines.map(\.id.uuidString).joined(separator: ","))"
             }
-            return "conversation:\(item.outputPath)"
+            return "conversation:\(normalizedPath(item.outputPath))"
         }
     }
 
     /// One-time migration that brings legacy history entries onto the per-uuid
-    /// `<App Support>/VoiceForge/outputs/<id>.wav` layout.
+    /// `<VoiceForge>/outputs/<id>.wav` layout.
     ///
-    /// Behaviour per entry:
-    /// - If `outputPath` already matches the canonical per-uuid URL: keep as-is
-    ///   when the file still exists, drop if the file is gone.
-    /// - If `outputPath` is a legacy path and the file on disk exists: copy it
-    ///   to the canonical URL (creating the directory if needed) and rewrite
-    ///   the entry's `outputPath`. Two entries that happened to share the same
-    ///   legacy path both get their own canonical copy, so neither plays the
-    ///   other's audio anymore.
-    /// - If the legacy file is missing or the copy fails: drop the entry.
+    /// When `item.outputPath` and the canonical URL resolve to the same file
+    /// (e.g. `/var/…` vs `/private/var/…`) the entry is counted unchanged.
     ///
     /// Pass `applicationSupport` in tests to avoid touching the real folder.
     public static func migrateLegacyEntries(
@@ -239,20 +309,50 @@ extension HistoryStore {
         applicationSupport: URL? = nil,
         fileManager: FileManager = .default
     ) -> (items: [GenerationHistoryItem], summary: HistoryMigrationSummary) {
-        let service = SpeechGenerationService()
+        let vfRoot = try? SpeechGenerationService.renderRootDirectory(applicationSupport: applicationSupport)
+        return _migrate(items, voiceForgeRoot: vfRoot, fileManager: fileManager)
+    }
+
+    /// Root-based migration: canonical paths live under `<voiceForgeRoot>/outputs/<id>.wav`.
+    /// Conversation entries are never relocated; singles with equal normalized paths
+    /// are treated as unchanged.
+    private static func _migrate(
+        _ items: [GenerationHistoryItem],
+        voiceForgeRoot: URL?,
+        fileManager: FileManager
+    ) -> (items: [GenerationHistoryItem], summary: HistoryMigrationSummary) {
         var result: [GenerationHistoryItem] = []
         var relocated = 0
         var dropped = 0
         var unchanged = 0
 
         for item in items {
-            guard let canonical = try? service.outputURL(forID: item.id, applicationSupport: applicationSupport) else {
-                dropped += 1
+            // Conversation items keep their existing outputPath (a JSON manifest);
+            // they must never be canonicalized to a .wav path or copied as WAV.
+            if item.type == .conversation {
+                if fileManager.fileExists(atPath: item.outputPath) {
+                    result.append(item)
+                    unchanged += 1
+                } else {
+                    dropped += 1
+                }
                 continue
             }
 
-            if item.outputPath == canonical.path {
-                if fileManager.fileExists(atPath: canonical.path) {
+            // Compute canonical .wav path under <voiceForgeRoot>/outputs/.
+            guard let root = voiceForgeRoot else {
+                dropped += 1
+                continue
+            }
+            let canonical = root
+                .appendingPathComponent("outputs", isDirectory: true)
+                .appendingPathComponent("\(item.id.uuidString).wav")
+
+            // Same physical file via different spelling? Count unchanged.
+            let itemResolved = URL(fileURLWithPath: item.outputPath).resolvingSymlinksInPath().standardizedFileURL
+            let canonicalResolved = canonical.resolvingSymlinksInPath().standardizedFileURL
+            if itemResolved == canonicalResolved {
+                if fileManager.fileExists(atPath: item.outputPath) {
                     result.append(item)
                     unchanged += 1
                 } else {

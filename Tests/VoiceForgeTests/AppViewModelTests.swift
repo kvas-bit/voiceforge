@@ -4,12 +4,14 @@ import Testing
 
 @MainActor
 struct AppViewModelTests {
-    @Test func loadingHistoryClearsStaleValidationError() {
+    @Test func loadingHistoryClearsStaleValidationError() throws {
         let suiteName = "VoiceForgeAppViewModelTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
 
-        let viewModel = AppViewModel(defaults: defaults)
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
         viewModel.generationError = "Enter text to generate."
 
         let item = GenerationHistoryItem(
@@ -33,9 +35,11 @@ struct AppViewModelTests {
     @Test func togglePlayHistoryResolvesItemSpecificURL() throws {
         let suiteName = "VoiceForgeAppViewModelTests-history-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
 
-        let viewModel = AppViewModel(defaults: defaults)
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
         let dir = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -76,9 +80,11 @@ struct AppViewModelTests {
     @Test func isPlayingHistoryIsKeyedOnIdNotURL() throws {
         let suiteName = "VoiceForgeAppViewModelTests-keyedID-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
 
-        let viewModel = AppViewModel(defaults: defaults)
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
         let dir = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -113,12 +119,14 @@ struct AppViewModelTests {
         #expect(!viewModel.isPlayingHistory(rowA))
     }
 
-    @Test func togglePreviewTracksTheActiveVoiceID() {
+    @Test func togglePreviewTracksTheActiveVoiceID() throws {
         let suiteName = "VoiceForgeAppViewModelTests-preview-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
 
-        let viewModel = AppViewModel(defaults: defaults)
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
         let voiceA = UUID()
         let voiceB = UUID()
         let bogusURL = URL(fileURLWithPath: "/nonexistent/clip.wav")
@@ -139,12 +147,14 @@ struct AppViewModelTests {
         #expect(!viewModel.isPreviewing(voiceID: voiceB))
     }
 
-    @Test func conversationPlaybackModeStaysIdleForEmptyDraft() {
+    @Test func conversationPlaybackModeStaysIdleForEmptyDraft() throws {
         let suiteName = "VoiceForgeAppViewModelTests-conversation-empty-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
 
-        let viewModel = AppViewModel(defaults: defaults)
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
 
         #expect(!viewModel.hasConversationLines)
         #expect(!viewModel.conversationHasGeneratedAudio)
@@ -154,9 +164,11 @@ struct AppViewModelTests {
     @Test func loadConversationUsesManifestSettingsAndTargetsConversations() throws {
         let suiteName = "VoiceForgeAppViewModelTests-conversation-load-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
 
-        let viewModel = AppViewModel(defaults: defaults)
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
         let dir = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -194,9 +206,7 @@ struct AppViewModelTests {
 
         #expect(viewModel.destination == .conversations)
         #expect(viewModel.conversationName == "Saved chat")
-        #expect(viewModel.model == "kokoro-multilingual")
-        #expect(Int(viewModel.maxNewTokens) == 2048)
-        #expect(viewModel.editType == "style")
+        #expect(viewModel.maxNewTokens == 2048)
         #expect(viewModel.conversationLines == manifest.lines)
         #expect(viewModel.conversationHasGeneratedAudio)
     }
@@ -204,9 +214,11 @@ struct AppViewModelTests {
     @Test func togglePlayHistoryForConversationLoadsConversationInsteadOfJSONAudio() throws {
         let suiteName = "VoiceForgeAppViewModelTests-conversation-history-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
 
-        let viewModel = AppViewModel(defaults: defaults)
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
         let dir = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -250,5 +262,94 @@ struct AppViewModelTests {
         #expect(viewModel.conversationLines == [line])
         #expect(viewModel.conversationPlaybackState != .idle)
         #expect(viewModel.conversationPlayer.currentLineIndex == 0)
+    }
+
+    /// Two AppViewModel constructions against already-migrated storage must not
+    /// redundantly rewrite the manifest.
+    @Test func secondAppViewModelConstructionDoesNotRewriteMigratedManifest() throws {
+        let fm = FileManager.default
+        let suiteName = "VoiceForgeAppVMTests-doubleInit-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
+        let itemID = UUID()
+        let wavURL = store.storageRoot
+            .appendingPathComponent("outputs", isDirectory: true)
+            .appendingPathComponent("\(itemID.uuidString).wav")
+        try fm.createDirectory(at: wavURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try writeSilentWAV(to: wavURL)
+
+        let canonicalItem = GenerationHistoryItem(
+            id: itemID,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            name: "Canonical",
+            sourceText: "canonical text",
+            formattedPrompt: "canonical text",
+            referenceAudioPath: "/tmp/ref.wav",
+            referenceText: "ref",
+            outputPath: wavURL.path
+        )
+        store.save([canonicalItem])
+
+        let historyURL = store.storageRoot.appendingPathComponent("history.json")
+        #expect(fm.fileExists(atPath: historyURL.path))
+
+        // Confirm migration sees the canonical item as unchanged.
+        let (_, summary) = store.migrateLegacy(store.load())
+        #expect(summary.relocated == 0)
+        #expect(summary.dropped == 0)
+        #expect(summary.unchanged == 1)
+
+        // --- Construction #1 + sentinel ---
+        _ = AppViewModel(defaults: defaults, historyStore: store)
+        let bytesBefore = try Data(contentsOf: historyURL)
+        let sentinel = Date(timeIntervalSince1970: 946_684_800)
+        try fm.setAttributes([.modificationDate: sentinel], ofItemAtPath: historyURL.path)
+
+        // --- Construction #2 ---
+        _ = AppViewModel(defaults: defaults, historyStore: store)
+
+        let bytesAfter = try Data(contentsOf: historyURL)
+        let mtimeAfter = try fm.attributesOfItem(atPath: historyURL.path)[.modificationDate] as! Date
+        #expect(bytesBefore == bytesAfter)
+        #expect(abs(mtimeAfter.timeIntervalSince(sentinel)) < 1.0,
+                "AppViewModel init #2 rewrote the manifest")
+    }
+
+    /// An AppViewModel with isolated defaults/store must not observe or mutate a
+    /// sibling "production-like" VoiceForge tree.
+    @Test func isolatedViewModelDoesNotTouchSiblingProductionTree() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory
+            .appendingPathComponent("VF-AppVM-Canary-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: base) }
+
+        let suiteName = "VF-AppVM-Canary-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
+
+        // Sibling production-like tree with a decoy WAV.
+        let prodRoot = base.appendingPathComponent("VoiceForge", isDirectory: true)
+        let prodOutputs = prodRoot.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: prodOutputs, withIntermediateDirectories: true)
+        let decoyWAV = prodOutputs.appendingPathComponent("\(UUID().uuidString).wav")
+        try writeSilentWAV(to: decoyWAV)
+        let decoyBytes = try Data(contentsOf: decoyWAV)
+        let decoySentinel = Date(timeIntervalSince1970: 946_684_800)
+        try fm.setAttributes([.modificationDate: decoySentinel], ofItemAtPath: decoyWAV.path)
+
+        // Construct AppViewModel — must not discover or touch the sibling decoy.
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
+        #expect(viewModel.history.isEmpty)
+
+        // Decoy file, bytes, and mtime must be untouched.
+        #expect(fm.fileExists(atPath: decoyWAV.path))
+        #expect(try Data(contentsOf: decoyWAV) == decoyBytes)
+        let decoyMtime = try fm.attributesOfItem(atPath: decoyWAV.path)[.modificationDate] as! Date
+        #expect(abs(decoyMtime.timeIntervalSince(decoySentinel)) < 1.0)
     }
 }

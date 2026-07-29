@@ -73,22 +73,29 @@ public struct PromptFormatter: Sendable {
     }
 
     private func normalizeTag(_ raw: String) -> String {
-        let compact = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let compact = TagCatalog.normalizeTagContent(raw)
 
         if compact.isEmpty {
             return ""
         }
 
-        return aliasMap[compact] ?? compact
+        if let alias = aliasMap[compact] {
+            return alias
+        }
+        // Typo correction: unique Levenshtein match within ≤ 2 edits.
+        if let corrected = TagCatalog.correct(compact),
+           let alias = aliasMap[corrected.label.lowercased()] {
+            return alias
+        }
+        return compact
     }
 
     private func cleanSpacing(in text: String) -> String {
         text
             .replacingOccurrences(of: #"\s+\]"#, with: "]", options: .regularExpression)
             .replacingOccurrences(of: #"\[\s+"#, with: "[", options: .regularExpression)
+            // Adjacent brackets with no gap: [a][b] → [a] [b]
+            .replacingOccurrences(of: #"\]\["#, with: "] [", options: .regularExpression)
             .replacingOccurrences(of: #"\]\s+\["#, with: "] [", options: .regularExpression)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)

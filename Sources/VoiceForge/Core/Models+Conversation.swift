@@ -1,5 +1,16 @@
 import Foundation
 
+/// A voice configuration bound to a speaker key (normalized speaker name).
+public struct SpeakerVoiceBinding: Equatable, Sendable, Codable {
+    public var referenceAudioPath: String
+    public var referenceText: String
+
+    public init(referenceAudioPath: String, referenceText: String) {
+        self.referenceAudioPath = referenceAudioPath
+        self.referenceText = referenceText
+    }
+}
+
 public enum ConversationLineStatus: String, Codable, Sendable {
     case pending, generating, completed, failed
 }
@@ -11,6 +22,10 @@ public struct ConversationLine: Codable, Equatable, Identifiable, Sendable {
     public var referenceText: String
     public var outputPath: String?
     public var status: ConversationLineStatus
+    /// Stable speaker key from script import. Nil for manually added lines.
+    /// Populated by `ConversationScriptParser` segments; used by the voice-
+    /// binding system to assign voices per speaker.
+    public var speakerKey: String?
 
     public init(
         id: UUID = UUID(),
@@ -18,7 +33,8 @@ public struct ConversationLine: Codable, Equatable, Identifiable, Sendable {
         referenceAudioPath: String,
         referenceText: String,
         outputPath: String? = nil,
-        status: ConversationLineStatus = .pending
+        status: ConversationLineStatus = .pending,
+        speakerKey: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -26,6 +42,7 @@ public struct ConversationLine: Codable, Equatable, Identifiable, Sendable {
         self.referenceText = referenceText
         self.outputPath = outputPath
         self.status = status
+        self.speakerKey = speakerKey
     }
 }
 

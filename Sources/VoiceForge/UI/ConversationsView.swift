@@ -20,6 +20,12 @@ struct ConversationsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         header
+                        if !isPlaybackMode {
+                            importSection
+                        }
+                        if !viewModel.conversationSpeakerKeys.isEmpty {
+                            speakersSection
+                        }
                         globalSettings
                         linesList
                     }
@@ -89,6 +95,77 @@ struct ConversationsView: View {
         }
     }
 
+    private var importSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Import script")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                Spacer()
+                Button("Import") {
+                    viewModel.importConversationScript(viewModel.conversationScriptDraft)
+                }
+                .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                .disabled(viewModel.conversationScriptDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("conversationImportButton")
+            }
+
+            Text("Paste a script like \"Alice: Hello there\" — one speaker turn per line. Indented lines continue the previous speaker's turn.")
+                .font(.system(size: 11))
+                .foregroundStyle(VoiceForgeTheme.tertiaryText)
+
+            TextEditor(text: $viewModel.conversationScriptDraft)
+                .font(.system(size: 12, design: .monospaced))
+                .frame(minHeight: 90, maxHeight: 160)
+                .padding(8)
+                .scrollContentBackground(.hidden)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(VoiceForgeTheme.field)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
+                        )
+                )
+                .accessibilityIdentifier("conversationScriptEditor")
+
+            if !viewModel.conversationScriptIssues.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(viewModel.conversationScriptIssues.enumerated()), id: \.offset) { _, issue in
+                        Text("Line \(issue.lineNumber): \(issue.kind == .missingSpeaker ? "missing speaker name" : "missing dialogue after colon")")
+                            .font(.system(size: 11))
+                            .foregroundStyle(VoiceForgeTheme.danger)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .voiceForgePanel(fill: VoiceForgeTheme.panel)
+    }
+
+    private var speakersSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Speaker voices")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                Spacer()
+                if !viewModel.allSpeakersAssigned {
+                    Text("Assign a voice to every speaker before generating.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(VoiceForgeTheme.danger)
+                }
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
+                ForEach(viewModel.conversationSpeakerKeys, id: \.self) { key in
+                    SpeakerAssignmentCard(speakerKey: key)
+                }
+            }
+        }
+        .padding(18)
+        .voiceForgePanel(fill: VoiceForgeTheme.panel)
+    }
+
     private var globalSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Conversation setup")
@@ -120,14 +197,9 @@ struct ConversationsView: View {
                     Text("Model")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(VoiceForgeTheme.tertiaryText)
-                    Picker("Model", selection: $viewModel.model) {
-                        ForEach(viewModel.availableModels, id: \.self) { model in
-                            Text(model).tag(model)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 180, alignment: .leading)
-                    .accessibilityIdentifier("conversationModelPicker")
+                    Text("Fish S2 Pro")
+                        .font(.system(size: 13, weight: .medium))
+                        .accessibilityIdentifier("conversationModelLabel")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -264,5 +336,68 @@ struct ConversationsView: View {
         .buttonStyle(VoiceForgeSecondaryButtonStyle())
         .disabled(viewModel.conversationIsGenerating)
         .accessibilityIdentifier("conversationAddLineButton")
+    }
+}
+
+// MARK: - Speaker assignment card
+
+private struct SpeakerAssignmentCard: View {
+    @EnvironmentObject private var viewModel: AppViewModel
+    let speakerKey: String
+
+    private var displayName: String {
+        viewModel.conversationSpeakerDisplayNames[speakerKey] ?? speakerKey
+    }
+
+    private var binding: SpeakerVoiceBinding? {
+        viewModel.voiceBinding(forSpeakerKey: speakerKey)
+    }
+
+    private var matchedPreset: VoicePreset? {
+        guard let binding else { return nil }
+        return viewModel.presets.first {
+            $0.referenceAudioPath == binding.referenceAudioPath && $0.referenceText == binding.referenceText
+        }
+    }
+
+    private var selection: String {
+        matchedPreset?.id.uuidString ?? ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(displayName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(VoiceForgeTheme.primaryText)
+
+            Picker("", selection: Binding(
+                get: { selection },
+                set: { newValue in
+                    guard let preset = viewModel.presets.first(where: { $0.id.uuidString == newValue }) else { return }
+                    viewModel.assignPresetToSpeaker(preset, speakerKey: speakerKey)
+                }
+            )) {
+                Text(binding == nil ? "Choose a voice…" : "Custom / imported clip").tag("")
+                ForEach(viewModel.presets) { preset in
+                    Text(preset.name).tag(preset.id.uuidString)
+                }
+            }
+            .labelsHidden()
+            .accessibilityIdentifier("speakerVoicePicker-\(speakerKey)")
+
+            Text(binding == nil ? "Not assigned" : (matchedPreset?.name ?? "Custom voice"))
+                .font(.system(size: 11))
+                .foregroundStyle(binding == nil ? VoiceForgeTheme.danger : VoiceForgeTheme.tertiaryText)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(VoiceForgeTheme.field)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
+                )
+        )
     }
 }
