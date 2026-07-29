@@ -444,11 +444,27 @@ struct AppViewModelTests {
             try JSONEncoder().encode(manifest).write(to: dir.appendingPathComponent("conversation.json"))
         }
 
+        // Explicit recovery still recovers every orphan under its own identity
+        // without cross-associating equal-content conversations.
+        let explicitlyRecovered = HistoryStore.recoverEntriesFromDisk(
+            existing: [existing1, existing2],
+            applicationSupport: store.storageRoot
+        )
+        let recoveredByID = Dictionary(uniqueKeysWithValues: explicitlyRecovered.map { ($0.id, $0) })
+        #expect(recoveredByID[existingID1]?.outputPath == legacyOutputPath1)
+        #expect(recoveredByID[existingID2]?.outputPath == legacyOutputPath2)
+        #expect(recoveredByID[orphanID1] != nil)
+        #expect(recoveredByID[orphanID2] != nil)
+        #expect(explicitlyRecovered.count == 4)
+
         let suiteName = "VF-CrossAssoc-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        // --- First construction ---
+        let historyURL = store.storageRoot.appendingPathComponent("history.json")
+        let bytesBeforeStart = try Data(contentsOf: historyURL)
+
+        // Normal startup treats a valid manifest as authoritative.
         let vm1 = AppViewModel(defaults: defaults, historyStore: store)
         let byID1 = Dictionary(uniqueKeysWithValues: vm1.history.map { ($0.id, $0) })
 
@@ -458,14 +474,12 @@ struct AppViewModelTests {
         #expect(byID1[existingID1]?.outputPath == legacyOutputPath1)
         #expect(byID1[existingID2]?.outputPath == legacyOutputPath2)
 
-        // The orphaned manifests must be recovered under their *own* folder
-        // identity, not merged into the unrelated existing entries.
-        #expect(byID1[orphanID1] != nil, "Orphaned conversation should be recovered under its own folder id")
-        #expect(byID1[orphanID2] != nil, "Orphaned conversation should be recovered under its own folder id")
-        #expect(vm1.history.count == 4)
+        #expect(byID1[orphanID1] == nil)
+        #expect(byID1[orphanID2] == nil)
+        #expect(vm1.history.count == 2)
 
-        let historyURL = store.storageRoot.appendingPathComponent("history.json")
         let bytesAfterFirst = try Data(contentsOf: historyURL)
+        #expect(bytesAfterFirst == bytesBeforeStart, "Startup must not import orphaned outputs into a valid manifest")
 
         // --- Second construction: must be fully stable (idempotent) ---
         let vm2 = AppViewModel(defaults: defaults, historyStore: store)
@@ -473,9 +487,9 @@ struct AppViewModelTests {
 
         #expect(byID2[existingID1]?.outputPath == legacyOutputPath1)
         #expect(byID2[existingID2]?.outputPath == legacyOutputPath2)
-        #expect(byID2[orphanID1]?.outputPath == byID1[orphanID1]?.outputPath)
-        #expect(byID2[orphanID2]?.outputPath == byID1[orphanID2]?.outputPath)
-        #expect(vm2.history.count == 4)
+        #expect(byID2[orphanID1] == nil)
+        #expect(byID2[orphanID2] == nil)
+        #expect(vm2.history.count == 2)
 
         let bytesAfterSecond = try Data(contentsOf: historyURL)
         #expect(bytesAfterFirst == bytesAfterSecond, "Second startup must not rewrite history.json at all")

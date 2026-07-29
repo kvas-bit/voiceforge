@@ -308,6 +308,39 @@ struct StoreTests {
                 "Startup recovery must not rewrite history.json merely to reorder equivalent entries")
     }
 
+    @Test func loadDoesNotImportOrphanOutputsWhenManifestIsValid() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("VoiceForgeValidManifest-\(UUID().uuidString)", isDirectory: true)
+        let outputs = root.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: outputs, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let knownID = UUID()
+        let orphanID = UUID()
+        let knownURL = outputs.appendingPathComponent("\(knownID.uuidString).wav")
+        let orphanURL = outputs.appendingPathComponent("\(orphanID.uuidString).wav")
+        try writeSilentWAV(to: knownURL)
+        try writeSilentWAV(to: orphanURL)
+
+        let known = GenerationHistoryItem(
+            id: knownID, createdAt: Date(timeIntervalSince1970: 1_000),
+            name: "Known", sourceText: "Known",
+            formattedPrompt: "Known", referenceAudioPath: "",
+            referenceText: "", outputPath: knownURL.path
+        )
+        let historyURL = root.appendingPathComponent("history.json")
+        let store = HistoryStore(fileURL: historyURL)
+        store.save([known])
+        let originalBytes = try Data(contentsOf: historyURL)
+
+        let loaded = store.load()
+
+        #expect(loaded == [known])
+        #expect(try Data(contentsOf: historyURL) == originalBytes,
+                "A valid manifest is authoritative; startup must not import unrelated orphan files")
+    }
+
     @Test func deletingSingleRemovesBackingFileSoItDoesNotReappearOnRecovery() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory

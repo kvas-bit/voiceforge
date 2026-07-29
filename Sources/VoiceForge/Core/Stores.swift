@@ -77,29 +77,23 @@ public final class HistoryStore {
             }
             return recovered
         }
-        let decoded = (try? decoder.decode([GenerationHistoryItem].self, from: data)) ?? []
+        if let decoded = try? decoder.decode([GenerationHistoryItem].self, from: data) {
+            // A valid manifest is authoritative. Scanning outputs on every launch
+            // can import abandoned, test, or partial files and silently rewrite
+            // user history. Disk recovery remains available for a missing or
+            // unreadable manifest and through recoverEntriesFromDisk itself.
+            return decoded
+        }
+
         let recovered = Self.recoverEntriesFromDisk(
-            existing: decoded,
+            existing: [],
             applicationSupport: storageRoot,
             fileManager: fileManager
         )
-        if !Self.sameElementsIgnoringOrder(recovered, decoded) {
+        if !recovered.isEmpty {
             save(recovered)
         }
         return recovered
-    }
-
-    private static func sameElementsIgnoringOrder(
-        _ lhs: [GenerationHistoryItem],
-        _ rhs: [GenerationHistoryItem]
-    ) -> Bool {
-        guard lhs.count == rhs.count else { return false }
-        var unmatched = rhs
-        for item in lhs {
-            guard let index = unmatched.firstIndex(of: item) else { return false }
-            unmatched.remove(at: index)
-        }
-        return unmatched.isEmpty
     }
 
     public func save(_ items: [GenerationHistoryItem]) {
