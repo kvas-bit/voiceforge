@@ -22,12 +22,25 @@ struct RootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .navigationTitle("VoiceForge")
+        .onChange(of: viewModel.destination) { _, destination in
+            // A destination's internal layout must never be allowed to trade away
+            // the app-level navigation column. History is the widest destination,
+            // so explicitly restore the user's navigation affordance on entry.
+            if destination == .history {
+                columnVisibility = .all
+            }
+        }
     }
 
     private var inspectorBinding: Binding<Bool> {
         Binding(
             get: { viewModel.inspectorVisible && viewModel.destination == .studio },
-            set: { viewModel.inspectorVisible = $0 }
+            set: { isPresented in
+                // SwiftUI dismisses an inspector as its destination disappears.
+                // That transient dismissal is not a user preference change.
+                guard viewModel.destination == .studio else { return }
+                viewModel.inspectorVisible = isPresented
+            }
         )
     }
 
@@ -47,35 +60,36 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var studioToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            if viewModel.isGenerating {
-                Button(role: .destructive) {
-                    viewModel.cancelGeneration()
-                } label: {
-                    Label("Stop", systemImage: "stop.circle.fill")
+        if viewModel.destination == .studio {
+            ToolbarItem(placement: .primaryAction) {
+                if viewModel.isGenerating {
+                    Button(role: .destructive) {
+                        viewModel.cancelGeneration()
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle.fill")
+                    }
+                    .keyboardShortcut(".", modifiers: .command)
+                    .accessibilityIdentifier("cancelGenerateButton")
+                    .help("Stop the in-flight generation (⌘.)")
+                } else {
+                    Button {
+                        viewModel.generate()
+                    } label: {
+                        Label("Generate", systemImage: "sparkles")
+                    }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .accessibilityIdentifier("generateButton")
                 }
-                .keyboardShortcut(".", modifiers: .command)
-                .accessibilityIdentifier("cancelGenerateButton")
-                .help("Stop the in-flight generation (⌘.)")
-            } else {
+            }
+            ToolbarItem(placement: .automatic) {
                 Button {
-                    viewModel.generate()
+                    viewModel.inspectorVisible.toggle()
                 } label: {
-                    Label("Generate", systemImage: "sparkles")
+                    Image(systemName: "sidebar.right")
                 }
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(viewModel.destination != .studio)
-                .accessibilityIdentifier("generateButton")
+                .help("Toggle inspector")
+                .accessibilityIdentifier("inspectorToggleButton")
             }
-        }
-        ToolbarItem(placement: .automatic) {
-            Button {
-                viewModel.inspectorVisible.toggle()
-            } label: {
-                Image(systemName: "sidebar.right")
-            }
-            .help("Toggle inspector")
-            .disabled(viewModel.destination != .studio)
         }
     }
 }

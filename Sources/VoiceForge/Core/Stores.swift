@@ -83,10 +83,23 @@ public final class HistoryStore {
             applicationSupport: storageRoot,
             fileManager: fileManager
         )
-        if recovered != decoded {
+        if !Self.sameElementsIgnoringOrder(recovered, decoded) {
             save(recovered)
         }
         return recovered
+    }
+
+    private static func sameElementsIgnoringOrder(
+        _ lhs: [GenerationHistoryItem],
+        _ rhs: [GenerationHistoryItem]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        var unmatched = rhs
+        for item in lhs {
+            guard let index = unmatched.firstIndex(of: item) else { return false }
+            unmatched.remove(at: index)
+        }
+        return unmatched.isEmpty
     }
 
     public func save(_ items: [GenerationHistoryItem]) {

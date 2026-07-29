@@ -40,10 +40,10 @@ struct PlaybackDockView: View {
             // Play/Pause
             Button {
                 if let url = viewModel.lastOutputURL {
-                    try? viewModel.audioPlayer.play(url: url)
+                    OutputPlaybackControl.toggle(url: url, player: viewModel.audioPlayer)
                 }
             } label: {
-                Image(systemName: viewModel.audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: isLatestOutputPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 36))
                     .foregroundStyle(viewModel.lastOutputURL == nil
                         ? VoiceForgeTheme.tertiaryText : VoiceForgeTheme.accent)
@@ -133,6 +133,11 @@ struct PlaybackDockView: View {
         let m = Int(t) / 60
         let s = Int(t) % 60
         return String(format: "%d:%02d", m, s)
+    }
+
+    private var isLatestOutputPlaying: Bool {
+        guard let url = viewModel.lastOutputURL else { return false }
+        return viewModel.audioPlayer.isPlaying(url: url)
     }
 }
 

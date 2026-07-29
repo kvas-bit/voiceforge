@@ -271,6 +271,43 @@ struct StoreTests {
         #expect(recovered.count == 2)
     }
 
+    @Test func loadDoesNotRewriteManifestForOrderingOnlyDifference() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("VoiceForgeOrderingOnly-\(UUID().uuidString)", isDirectory: true)
+        let outputs = root.appendingPathComponent("outputs", isDirectory: true)
+        try fm.createDirectory(at: outputs, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let laterLexicalID = UUID(uuidString: "ECCD2F38-58E6-4357-9D50-374C59418056")!
+        let earlierLexicalID = UUID(uuidString: "736C3EED-E4D1-4C6C-9BD5-64A271B8A4E5")!
+        let timestamp = Date(timeIntervalSince1970: 800_145_832.2024353)
+
+        func item(_ id: UUID) -> GenerationHistoryItem {
+            GenerationHistoryItem(
+                id: id, createdAt: timestamp, name: "Recovered generation",
+                sourceText: "Recovered generation", formattedPrompt: "",
+                referenceAudioPath: "", referenceText: "",
+                outputPath: outputs.appendingPathComponent("\(id.uuidString).wav").path
+            )
+        }
+
+        for id in [laterLexicalID, earlierLexicalID] {
+            try writeSilentWAV(to: outputs.appendingPathComponent("\(id.uuidString).wav"))
+        }
+
+        let historyURL = root.appendingPathComponent("history.json")
+        let store = HistoryStore(fileURL: historyURL)
+        store.save([item(laterLexicalID), item(earlierLexicalID)])
+        let originalBytes = try Data(contentsOf: historyURL)
+
+        let loaded = store.load()
+
+        #expect(Set(loaded.map(\.id)) == Set([laterLexicalID, earlierLexicalID]))
+        #expect(try Data(contentsOf: historyURL) == originalBytes,
+                "Startup recovery must not rewrite history.json merely to reorder equivalent entries")
+    }
+
     @Test func deletingSingleRemovesBackingFileSoItDoesNotReappearOnRecovery() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory

@@ -159,7 +159,7 @@ final class VoiceForgeUITests: XCTestCase {
 
         goToSidebar(app, "History")
         XCTAssertTrue(waitUntilHistoryContainsEntries(app, timeout: 10))
-        let originalCount = historyEntries(app).count
+        let originalCount = historyEntryCount(app)
         XCTAssertEqual(originalCount, 1)
 
         let firstEntry = firstHistoryEntry(app)
@@ -177,7 +177,7 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(waitUntilEnabled(app.buttons["playOutputButton"], timeout: 30))
 
         goToSidebar(app, "History")
-        XCTAssertTrue(waitUntil(timeout: 10) { self.historyEntries(app).count == 2 })
+        XCTAssertTrue(waitUntil(timeout: 10) { self.historyEntryCount(app) == 2 })
 
         // The newest entry (top of the list) is the regenerated version and
         // must show the "Version of" link back to the original.
@@ -234,6 +234,12 @@ final class VoiceForgeUITests: XCTestCase {
 
         goToSidebar(app, "History")
         XCTAssertTrue(app.descendants(matching: .any)["historyList"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["sidebarStudio"].isHittable,
+            "History must not collapse the app sidebar"
+        )
+        XCTAssertFalse(app.buttons["generateButton"].exists)
+        XCTAssertFalse(app.buttons["inspectorToggleButton"].exists)
 
         goToSidebar(app, "Conversations")
         XCTAssertTrue(app.buttons["conversationImportButton"].waitForExistence(timeout: 10))
@@ -242,20 +248,75 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["generateButton"].waitForExistence(timeout: 10))
     }
 
+    func testConversationKeyboardShortcutNavigates() {
+        let app = launchApp()
+
+        XCTAssertTrue(app.buttons["generateButton"].waitForExistence(timeout: 10))
+        app.typeKey("4", modifierFlags: .command)
+        XCTAssertTrue(app.buttons["conversationImportButton"].waitForExistence(timeout: 10))
+    }
+
+    func testStudioInspectorPreferenceSurvivesNavigation() {
+        let app = launchApp()
+
+        let tone = app.textFields["emotionField"]
+        XCTAssertTrue(tone.waitForExistence(timeout: 10))
+
+        goToSidebar(app, "History")
+        XCTAssertTrue(app.descendants(matching: .any)["historyList"].waitForExistence(timeout: 10))
+        XCTAssertFalse(tone.exists, "Studio inspector content must be omitted from History")
+
+        goToSidebar(app, "Studio")
+        XCTAssertTrue(
+            tone.waitForExistence(timeout: 10),
+            "Returning to Studio must restore the inspector's previous visible state"
+        )
+    }
+
+    func testStudioEditorAndInspectorFieldsAcceptInputAndQuickTags() {
+        let app = launchApp()
+
+        let editor = app.textViews["sourceTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.isHittable)
+        editor.click()
+        editor.typeText("A real interaction test [")
+        XCTAssertTrue((editor.value as? String)?.contains("A real interaction test [") == true)
+
+        let quickTag = app.buttons["quickTag-[whispers]"]
+        XCTAssertTrue(quickTag.isHittable)
+        quickTag.click()
+        XCTAssertTrue((editor.value as? String)?.contains("[whispers]") == true)
+
+        let tone = app.textFields["emotionField"]
+        XCTAssertTrue(tone.waitForExistence(timeout: 10))
+        XCTAssertTrue(tone.isHittable)
+        tone.click()
+        tone.typeText("warm narrator")
+        XCTAssertEqual(tone.value as? String, "warm narrator")
+    }
+
     // MARK: - Helpers
 
     private func goToSidebar(_ app: XCUIApplication, _ label: String) {
         let item = app.descendants(matching: .any)["sidebar\(label)"]
         XCTAssertTrue(item.waitForExistence(timeout: 10), "Sidebar item \(label) not found")
+        XCTAssertTrue(item.isHittable, "Sidebar item \(label) is present but not clickable")
         item.click()
     }
 
     private func historyEntries(_ app: XCUIApplication) -> XCUIElementQuery {
-        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyEntry-"))
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyRowSelect-"))
     }
 
     private func firstHistoryEntry(_ app: XCUIApplication) -> XCUIElement {
-        historyEntries(app).element(boundBy: 0)
+        app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyRowSelect-"))
+            .element(boundBy: 0)
+    }
+
+    private func historyEntryCount(_ app: XCUIApplication) -> Int {
+        Set(historyEntries(app).allElementsBoundByIndex.map(\.identifier)).count
     }
 
     private func waitUntilEnabled(_ element: XCUIElement, timeout: TimeInterval) -> Bool {

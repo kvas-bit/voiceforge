@@ -221,3 +221,18 @@ public final class AudioPlayerController: NSObject, ObservableObject, AVAudioPla
         return bars
     }
 }
+
+/// Shared behavior for controls that play the latest rendered output.
+///
+/// `play(url:)` resumes or loads but intentionally does not pause an already
+/// playing clip, so play/pause controls must distinguish the loaded URL.
+@MainActor
+public enum OutputPlaybackControl {
+    public static func toggle(url: URL, player: AudioPlayerController) {
+        if player.currentURL == url {
+            player.togglePlayback()
+        } else {
+            try? player.play(url: url)
+        }
+    }
+}

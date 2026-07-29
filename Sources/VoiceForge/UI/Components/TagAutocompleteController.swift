@@ -37,32 +37,25 @@ final class TagAutocompleteController {
             return
         }
         selectionIndex = min(selectionIndex, suggestions.count - 1)
-        updateContent()
-
-        if panel == nil {
-            let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 280, height: 280),
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: true
-            )
-            panel.isFloatingPanel = true
-            panel.hasShadow = true
-            panel.backgroundColor = .clear
-            panel.isOpaque = false
-            panel.level = .floating
-            panel.hidesOnDeactivate = true
-            self.panel = panel
-        }
-
-        guard let panel else { return }
-        let origin = NSPoint(x: screenRect.minX, y: screenRect.minY - 220)
-        panel.setFrameTopLeftPoint(NSPoint(x: origin.x, y: screenRect.minY))
+        let panel = ensurePanel()
+        updateContent(in: panel)
+        panel.setFrameTopLeftPoint(NSPoint(x: screenRect.minX, y: screenRect.minY))
         panel.orderFront(nil)
     }
 
     func dismiss() {
         panel?.orderOut(nil)
+        selectionIndex = 0
+    }
+
+    /// Permanently tears down the floating window when its editor leaves the view hierarchy.
+    func close() {
+        panel?.orderOut(nil)
+        panel?.contentView = nil
+        panel?.close()
+        hostingView = nil
+        panel = nil
+        suggestions = []
         selectionIndex = 0
     }
 
@@ -83,7 +76,36 @@ final class TagAutocompleteController {
         delegate.autocomplete(self, didCommit: tag, replacingRange: range)
     }
 
+    private func ensurePanel() -> NSPanel {
+        if let panel {
+            return panel
+        }
+
+        // Start with a zero-sized surface. `updateContent(in:)` immediately sizes it to
+        // the hosted SwiftUI view so no transparent portion of the panel can intercept clicks.
+        let panel = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        panel.isFloatingPanel = true
+        panel.hasShadow = true
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.level = .floating
+        panel.hidesOnDeactivate = true
+        panel.isReleasedWhenClosed = false
+        self.panel = panel
+        return panel
+    }
+
     private func updateContent() {
+        guard let panel else { return }
+        updateContent(in: panel)
+    }
+
+    private func updateContent(in panel: NSPanel) {
         let view = AutocompleteList(
             suggestions: suggestions,
             selectionIndex: selectionIndex,
@@ -96,10 +118,15 @@ final class TagAutocompleteController {
             hostingView.rootView = view
         } else {
             let hosting = NSHostingView(rootView: view)
-            hosting.frame = NSRect(x: 0, y: 0, width: 280, height: 280)
-            panel?.contentView = hosting
+            panel.contentView = hosting
             hostingView = hosting
         }
+
+        guard let hostingView else { return }
+        hostingView.layoutSubtreeIfNeeded()
+        let fittingSize = hostingView.fittingSize
+        hostingView.frame = NSRect(origin: .zero, size: fittingSize)
+        panel.setContentSize(fittingSize)
     }
 }
 

@@ -85,18 +85,6 @@ struct VoicesView: View {
                     )
             )
 
-            HStack(spacing: 8) {
-                ForEach(["All", "Reference", "Cloned", "Multilingual"], id: \.self) { filter in
-                    Text(filter)
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            Capsule().fill(filter == "All" ? VoiceForgeTheme.accentSoft : VoiceForgeTheme.fieldMuted)
-                        )
-                        .foregroundStyle(filter == "All" ? VoiceForgeTheme.accent : VoiceForgeTheme.secondaryText)
-                }
-            }
         }
         .padding(20)
     }

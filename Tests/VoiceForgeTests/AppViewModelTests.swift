@@ -7,6 +7,21 @@ import Testing
 
 @MainActor
 struct AppViewModelTests {
+    @Test func completedConversationCanEnterEditingPresentationWithoutChangingPlaybackData() {
+        #expect(ConversationPresentation.isPlaybackMode(
+            modelIsInPlaybackMode: true,
+            isEditingCompletedConversation: false
+        ))
+        #expect(!ConversationPresentation.isPlaybackMode(
+            modelIsInPlaybackMode: true,
+            isEditingCompletedConversation: true
+        ))
+        #expect(!ConversationPresentation.isPlaybackMode(
+            modelIsInPlaybackMode: false,
+            isEditingCompletedConversation: false
+        ))
+    }
+
     @Test func loadingHistoryClearsStaleValidationError() throws {
         let suiteName = "VoiceForgeAppViewModelTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

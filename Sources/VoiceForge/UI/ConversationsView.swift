@@ -1,13 +1,22 @@
 import SwiftUI
+import UniformTypeIdentifiers
 #if canImport(VoiceForgeCore)
 import VoiceForgeCore
 #endif
 
 struct ConversationsView: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @State private var isEditingCompletedConversation = false
+
+    private var modelIsInPlaybackMode: Bool {
+        viewModel.conversationIsInPlaybackMode
+    }
 
     private var isPlaybackMode: Bool {
-        viewModel.conversationIsInPlaybackMode
+        ConversationPresentation.isPlaybackMode(
+            modelIsInPlaybackMode: modelIsInPlaybackMode,
+            isEditingCompletedConversation: isEditingCompletedConversation
+        )
     }
 
     private var allLinesCompleted: Bool {
@@ -45,6 +54,11 @@ struct ConversationsView: View {
             }
         }
         .navigationTitle("Conversations")
+        .onChange(of: modelIsInPlaybackMode) { _, isInPlaybackMode in
+            if !isInPlaybackMode {
+                isEditingCompletedConversation = false
+            }
+        }
     }
 
     private var header: some View {
@@ -82,8 +96,19 @@ struct ConversationsView: View {
                     .buttonStyle(VoiceForgeSecondaryButtonStyle())
                     .accessibilityIdentifier("conversationDownloadButton")
                 }
+                if modelIsInPlaybackMode && !viewModel.conversationIsGenerating {
+                    Button(isEditingCompletedConversation ? "Done editing" : "Edit") {
+                        if !isEditingCompletedConversation {
+                            viewModel.conversationPlayer.pause()
+                            viewModel.conversationPlaybackState = viewModel.conversationPlayer.state
+                        }
+                        isEditingCompletedConversation.toggle()
+                    }
+                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                    .accessibilityIdentifier("conversationEditButton")
+                }
                 if viewModel.hasConversationLines {
-                    Button(isPlaybackMode ? "Start over" : "Clear") {
+                    Button(modelIsInPlaybackMode ? "Start over" : "Clear") {
                         viewModel.resetConversation()
                     }
                     .buttonStyle(.plain)
@@ -343,6 +368,7 @@ struct ConversationsView: View {
 
 private struct SpeakerAssignmentCard: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @State private var isChoosingCustomVoice = false
     let speakerKey: String
 
     private var displayName: String {
@@ -361,7 +387,10 @@ private struct SpeakerAssignmentCard: View {
     }
 
     private var selection: String {
-        matchedPreset?.id.uuidString ?? ""
+        if let matchedPreset {
+            return matchedPreset.id.uuidString
+        }
+        return binding == nil ? "unassigned" : "custom"
     }
 
     var body: some View {
@@ -373,17 +402,47 @@ private struct SpeakerAssignmentCard: View {
             Picker("", selection: Binding(
                 get: { selection },
                 set: { newValue in
+                    if newValue == "unassigned" {
+                        viewModel.assignReferenceToSpeaker(
+                            referenceAudioPath: "",
+                            referenceText: "",
+                            speakerKey: speakerKey
+                        )
+                        return
+                    }
                     guard let preset = viewModel.presets.first(where: { $0.id.uuidString == newValue }) else { return }
                     viewModel.assignPresetToSpeaker(preset, speakerKey: speakerKey)
                 }
             )) {
-                Text(binding == nil ? "Choose a voice…" : "Custom / imported clip").tag("")
+                Text("No voice").tag("unassigned")
+                if binding != nil && matchedPreset == nil {
+                    Text("Custom / imported clip").tag("custom")
+                }
                 ForEach(viewModel.presets) { preset in
                     Text(preset.name).tag(preset.id.uuidString)
                 }
             }
             .labelsHidden()
             .accessibilityIdentifier("speakerVoicePicker-\(speakerKey)")
+
+            HStack(spacing: 8) {
+                Button("Choose file…") {
+                    isChoosingCustomVoice = true
+                }
+                .buttonStyle(VoiceForgeSecondaryButtonStyle())
+
+                if !viewModel.referenceAudioPath.isEmpty {
+                    Button("Use studio voice") {
+                        viewModel.assignReferenceToSpeaker(
+                            referenceAudioPath: viewModel.referenceAudioPath,
+                            referenceText: viewModel.referenceText,
+                            speakerKey: speakerKey
+                        )
+                    }
+                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                    .disabled(viewModel.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
 
             Text(binding == nil ? "Not assigned" : (matchedPreset?.name ?? "Custom voice"))
                 .font(.system(size: 11))
@@ -399,5 +458,22 @@ private struct SpeakerAssignmentCard: View {
                         .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
                 )
         )
+        .fileImporter(
+            isPresented: $isChoosingCustomVoice,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: false
+        ) { result in
+            guard case .success(let urls) = result, let url = urls.first else {
+                if case .failure(let error) = result {
+                    viewModel.generationError = error.localizedDescription
+                }
+                return
+            }
+            viewModel.assignReferenceToSpeaker(
+                referenceAudioPath: url.path,
+                referenceText: viewModel.referenceText,
+                speakerKey: speakerKey
+            )
+        }
     }
 }

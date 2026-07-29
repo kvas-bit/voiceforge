@@ -55,11 +55,24 @@ struct PromptTextEditor: NSViewRepresentable {
         }
     }
 
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+        coordinator.teardown()
+    }
+
     final class Coordinator: NSObject, NSTextViewDelegate, TagAutocompleteControllerDelegate {
         @Binding var text: String
         weak var textView: NSTextView?
         var lastInsertTrigger = 0
-        private lazy var autocomplete = TagAutocompleteController(delegate: self)
+        private var autocompleteController: TagAutocompleteController?
+
+        private var autocomplete: TagAutocompleteController {
+            if let autocompleteController {
+                return autocompleteController
+            }
+            let controller = TagAutocompleteController(delegate: self)
+            autocompleteController = controller
+            return controller
+        }
 
         init(text: Binding<String>) {
             _text = text
@@ -70,6 +83,21 @@ struct PromptTextEditor: NSViewRepresentable {
             text = textView.string
             applyTagHighlighting()
             refreshAutocomplete()
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            autocompleteController?.dismiss()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            refreshAutocomplete()
+        }
+
+        func teardown() {
+            autocompleteController?.close()
+            autocompleteController = nil
+            textView?.delegate = nil
+            textView = nil
         }
 
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -127,7 +155,10 @@ struct PromptTextEditor: NSViewRepresentable {
 
         @MainActor
         func refreshAutocomplete() {
-            guard let textView else { return }
+            guard let textView, textView.window != nil else {
+                autocompleteController?.dismiss()
+                return
+            }
             let caret = textView.selectedRange().location
             let nsString = textView.string as NSString
             guard caret > 0, caret <= nsString.length else {

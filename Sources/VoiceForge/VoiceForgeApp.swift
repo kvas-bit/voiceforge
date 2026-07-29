@@ -127,6 +127,8 @@ private struct VoiceForgeCommands: Commands {
                 .keyboardShortcut("2", modifiers: .command)
             Button("History") { viewModel.destination = .history }
                 .keyboardShortcut("3", modifiers: .command)
+            Button("Conversations") { viewModel.destination = .conversations }
+                .keyboardShortcut("4", modifiers: .command)
         }
     }
 }

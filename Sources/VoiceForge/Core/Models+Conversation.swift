@@ -11,6 +11,15 @@ public struct SpeakerVoiceBinding: Equatable, Sendable, Codable {
     }
 }
 
+public enum ConversationPresentation {
+    public static func isPlaybackMode(
+        modelIsInPlaybackMode: Bool,
+        isEditingCompletedConversation: Bool
+    ) -> Bool {
+        modelIsInPlaybackMode && !isEditingCompletedConversation
+    }
+}
+
 public enum ConversationLineStatus: String, Codable, Sendable {
     case pending, generating, completed, failed
 }

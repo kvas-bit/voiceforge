@@ -1,10 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
 #if canImport(VoiceForgeCore)
 import VoiceForgeCore
 #endif
 
 struct ConversationLineRow: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @State private var isChoosingReferenceAudio = false
     let line: ConversationLine
     let index: Int
     let isPlaybackMode: Bool
@@ -30,6 +32,12 @@ struct ConversationLineRow: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(isCurrentLine ? VoiceForgeTheme.accent.opacity(0.4) : VoiceForgeTheme.stroke, lineWidth: isCurrentLine ? 1.5 : 1)
                 )
+        )
+        .fileImporter(
+            isPresented: $isChoosingReferenceAudio,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: false,
+            onCompletion: handleReferenceAudioSelection
         )
     }
 
@@ -151,10 +159,7 @@ struct ConversationLineRow: View {
 
                     HStack(spacing: 8) {
                         Button("Choose file…") {
-                            viewModel.chooseReferenceAudio()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                applyCurrentReferenceToLine()
-                            }
+                            isChoosingReferenceAudio = true
                         }
                         .buttonStyle(VoiceForgeSecondaryButtonStyle())
                         .accessibilityIdentifier("conversationBrowseVoiceButton-\(index)")
@@ -165,6 +170,24 @@ struct ConversationLineRow: View {
                             }
                             .buttonStyle(VoiceForgeSecondaryButtonStyle())
                         }
+                    }
+
+                    if matchedPreset == nil && !line.referenceAudioPath.isEmpty {
+                        TextField(
+                            "Reference transcript",
+                            text: Binding(
+                                get: { line.referenceText },
+                                set: { updateLineReferenceText($0) }
+                            )
+                        )
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(VoiceForgeTheme.field)
+                        )
+                        .accessibilityIdentifier("conversationReferenceTextField-\(index)")
                     }
                 }
 
@@ -264,6 +287,14 @@ struct ConversationLineRow: View {
     }
 
     private func updateLineReferenceText(_ newText: String) {
+        if let speakerKey = line.speakerKey, !line.referenceAudioPath.isEmpty {
+            viewModel.assignReferenceToSpeaker(
+                referenceAudioPath: line.referenceAudioPath,
+                referenceText: newText,
+                speakerKey: speakerKey
+            )
+            return
+        }
         viewModel.updateConversationLineReferenceText(at: index, text: newText)
     }
 
@@ -277,6 +308,30 @@ struct ConversationLineRow: View {
 
     private func clearVoiceFromLine() {
         viewModel.clearVoiceFromConversationLine(at: index)
+    }
+
+    private func handleReferenceAudioSelection(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, let url = urls.first else {
+            if case .failure(let error) = result {
+                viewModel.generationError = error.localizedDescription
+            }
+            return
+        }
+
+        let referenceText = line.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? viewModel.referenceText
+            : line.referenceText
+
+        if let speakerKey = line.speakerKey {
+            viewModel.assignReferenceToSpeaker(
+                referenceAudioPath: url.path,
+                referenceText: referenceText,
+                speakerKey: speakerKey
+            )
+        } else if viewModel.conversationLines.indices.contains(index) {
+            viewModel.conversationLines[index].referenceAudioPath = url.path
+            viewModel.conversationLines[index].referenceText = referenceText
+        }
     }
 
     private var matchedPreset: VoicePreset? {

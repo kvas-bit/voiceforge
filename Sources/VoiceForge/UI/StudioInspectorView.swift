@@ -133,11 +133,14 @@ struct StudioInspectorView: View {
 
                         HStack(spacing: 8) {
                             Button {
-                                viewModel.audioPlayer.togglePlayback()
+                                OutputPlaybackControl.toggle(
+                                    url: outputURL,
+                                    player: viewModel.audioPlayer
+                                )
                             } label: {
-                                Image(systemName: viewModel.audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                Image(systemName: viewModel.audioPlayer.isPlaying(url: outputURL) ? "pause.fill" : "play.fill")
                             }
-                            .disabled(viewModel.audioPlayer.currentURL != outputURL)
+                            .accessibilityIdentifier("inspectorPlayOutputButton")
 
                             Button {
                                 viewModel.saveOutputAs()

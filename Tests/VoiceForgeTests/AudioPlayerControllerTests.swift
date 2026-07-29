@@ -8,6 +8,40 @@ import Testing
 
 @MainActor
 struct AudioPlayerControllerTests {
+    @Test func outputControlTogglesLoadedRenderBetweenPlayAndPause() throws {
+        let player = AudioPlayerController()
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let url = dir.appendingPathComponent("render.wav")
+        try writeSilentWAV(to: url, sampleCount: 16_000)
+        try player.load(url: url)
+
+        OutputPlaybackControl.toggle(url: url, player: player)
+        #expect(player.currentURL == url)
+        #expect(player.isPlaying)
+
+        OutputPlaybackControl.toggle(url: url, player: player)
+        #expect(player.currentURL == url)
+        #expect(!player.isPlaying)
+    }
+
+    @Test func outputControlLoadsDisplayedRenderWhenAnotherClipIsCurrent() throws {
+        let player = AudioPlayerController()
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let staleURL = dir.appendingPathComponent("stale.wav")
+        let latestURL = dir.appendingPathComponent("latest.wav")
+        try writeSilentWAV(to: staleURL, sampleCount: 16_000)
+        try writeSilentWAV(to: latestURL, sampleCount: 16_000)
+        try player.load(url: staleURL)
+
+        OutputPlaybackControl.toggle(url: latestURL, player: player)
+
+        #expect(player.currentURL == latestURL)
+    }
+
     @Test func playReplacesPlayerWhenURLDiffers() throws {
         let player = AudioPlayerController()
         let dir = makeTempDirectory()
