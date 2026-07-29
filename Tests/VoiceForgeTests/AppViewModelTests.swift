@@ -1,5 +1,8 @@
 import Foundation
 import Testing
+#if canImport(VoiceForgeCore)
+@testable import VoiceForgeCore
+#endif
 @testable import VoiceForge
 
 @MainActor

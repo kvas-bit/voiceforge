@@ -152,7 +152,7 @@ extension HistoryStore {
     /// Instance helper that pins canonical paths under the store's own
     /// `<storageRoot>/outputs/<id>.wav`. Delegates to the shared root-based
     /// implementation so the two code paths stay in sync.
-    func migrateLegacy(_ items: [GenerationHistoryItem]) -> (
+    public func migrateLegacy(_ items: [GenerationHistoryItem]) -> (
         items: [GenerationHistoryItem], summary: HistoryMigrationSummary
     ) {
         return Self._migrate(

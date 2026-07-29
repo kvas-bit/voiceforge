@@ -11,6 +11,9 @@ struct StudioView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    if viewModel.regeneratingFromID != nil {
+                        regenerationBanner
+                    }
                     referenceCard
                     editorCard
                     previewCard
@@ -47,6 +50,31 @@ struct StudioView: View {
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)
             }
         }
+    }
+
+    private var regenerationBanner: some View {
+        let sourceName = viewModel.history.first(where: { $0.id == viewModel.regeneratingFromID })?.name ?? "a previous generation"
+        return HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.branch")
+                .foregroundStyle(VoiceForgeTheme.accent)
+            Text("Editing a copy of “\(sourceName)” — generating will save a new version and leave the original untouched.")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(VoiceForgeTheme.secondaryText)
+            Spacer(minLength: 8)
+            Button("Start fresh instead") {
+                viewModel.clearRegenerationSource()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(VoiceForgeTheme.accent)
+            .accessibilityIdentifier("clearRegenerationSourceButton")
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(VoiceForgeTheme.accentSoft)
+        )
+        .accessibilityIdentifier("regenerationBanner")
     }
 
     private var referenceCard: some View {
@@ -216,6 +244,7 @@ struct StudioView: View {
                 Text(viewModel.generationError)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(VoiceForgeTheme.danger)
+                    .accessibilityIdentifier("generationErrorText")
             }
             if !viewModel.cliOutput.isEmpty {
                 ScrollView {

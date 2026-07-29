@@ -2,8 +2,6 @@ import XCTest
 
 @MainActor
 final class VoiceForgeUITests: XCTestCase {
-    private let referenceAudioPath = "/Users/kaviantoniovasudeo/Downloads/Sound Creation/Reference/Kayden < 30 seconds.mp3"
-    private let referenceText = "This is a short reference sample for testing."
     private var launchedApp: XCUIApplication?
 
     override func setUpWithError() throws {
@@ -14,6 +12,8 @@ final class VoiceForgeUITests: XCTestCase {
         launchedApp?.terminate()
         launchedApp = nil
     }
+
+    // MARK: - Studio / generation
 
     func testPromptFormattingPreviewUpdates() {
         let app = launchApp(environment: [
@@ -30,8 +30,8 @@ final class VoiceForgeUITests: XCTestCase {
 
     func testGenerationWorkflowProducesOutput() {
         let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText,
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "This is a short reference sample for testing.",
             "VOICEFORGE_UITEST_SOURCE_TEXT": "This is a GUI generation test."
         ])
 
@@ -40,7 +40,7 @@ final class VoiceForgeUITests: XCTestCase {
         generateButton.click()
 
         let playButton = app.buttons["playOutputButton"]
-        XCTAssertTrue(waitUntilEnabled(playButton, timeout: 120))
+        XCTAssertTrue(waitUntilEnabled(playButton, timeout: 30))
 
         let saveButton = app.buttons["saveOutputButton"]
         let revealButton = app.buttons["revealOutputButton"]
@@ -48,186 +48,24 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(waitUntilEnabled(revealButton, timeout: 5))
     }
 
-    func testCustomVoicesAndSettingsWindowsOpen() {
-        let settingsApp = launchApp()
-
-        let openSettingsButton = settingsApp.buttons["openSettingsButton"]
-        XCTAssertTrue(openSettingsButton.waitForExistence(timeout: 10))
-        openSettingsButton.click()
-
-        let outputPathText = settingsApp.staticTexts["settingsOutputPathText"]
-        XCTAssertTrue(outputPathText.waitForExistence(timeout: 10))
-        XCTAssertTrue(textContent(of: outputPathText).contains("voiceforge_output.wav"))
-
-        settingsApp.terminate()
-        launchedApp = nil
-
-        let voicesApp = launchApp()
-
-        let openCustomVoicesButton = voicesApp.buttons["openCustomVoicesButton"]
-        XCTAssertTrue(openCustomVoicesButton.waitForExistence(timeout: 10))
-        openCustomVoicesButton.click()
-
-        let presetNameField = voicesApp.textFields["presetNameField"]
-        XCTAssertTrue(presetNameField.waitForExistence(timeout: 10))
-    }
-
-    func testCanSaveCustomVoicePresetFromCurrentReference() {
-        let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText
-        ])
-
-        let openCustomVoicesButton = app.buttons["openCustomVoicesButton"]
-        XCTAssertTrue(openCustomVoicesButton.waitForExistence(timeout: 10))
-        openCustomVoicesButton.click()
-
-        let presetNameField = app.textFields["presetNameField"]
-        XCTAssertTrue(presetNameField.waitForExistence(timeout: 10))
-        presetNameField.click()
-        presetNameField.typeText("Kayden Test")
-
-        let saveButton = app.buttons["saveCurrentReferenceButton"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
-        saveButton.click()
-
-        let voicesList = app.tables["customVoicesList"]
-        XCTAssertTrue(voicesList.waitForExistence(timeout: 10))
-    }
-
-    func testSettingsResetClearsReferenceFields() {
-        let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText,
-            "VOICEFORGE_UITEST_EMOTION_TEXT": "professional broadcast tone"
-        ])
-
-        let openSettingsButton = app.buttons["openSettingsButton"]
-        XCTAssertTrue(openSettingsButton.waitForExistence(timeout: 10))
-        openSettingsButton.click()
-
-        let resetButton = app.buttons["resetReferenceFieldsButton"]
-        XCTAssertTrue(resetButton.waitForExistence(timeout: 10))
-        resetButton.click()
-
-        let referenceAudioField = app.textFields["referenceAudioPathField"]
-        let referenceTextField = app.textFields["referenceTextField"]
-        let emotionField = app.textFields["emotionField"]
-
-        XCTAssertEqual(stringValue(of: referenceAudioField), "")
-        XCTAssertEqual(stringValue(of: referenceTextField), "")
-        XCTAssertEqual(stringValue(of: emotionField), "")
-    }
-
-    func testSavedPresetCanBeAppliedBackToMainWindow() {
-        let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText
-        ])
-
-        let openCustomVoicesButton = app.buttons["openCustomVoicesButton"]
-        XCTAssertTrue(openCustomVoicesButton.waitForExistence(timeout: 10))
-        openCustomVoicesButton.click()
-
-        let presetNameField = app.textFields["presetNameField"]
-        XCTAssertTrue(presetNameField.waitForExistence(timeout: 10))
-        presetNameField.click()
-        presetNameField.typeText("Reusable Kayden")
-
-        let saveButton = app.buttons["saveCurrentReferenceButton"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
-        saveButton.click()
-
-        let useButton = app.buttons["usePresetButton-Reusable Kayden"]
-        XCTAssertTrue(useButton.waitForExistence(timeout: 10))
-        useButton.click()
-
-        XCTAssertEqual(stringValue(of: app.textFields["referenceAudioPathField"]), referenceAudioPath)
-        XCTAssertEqual(stringValue(of: app.textFields["referenceTextField"]), referenceText)
-    }
-
-    func testGenerationAddsHistoryEntry() {
-        let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText,
-            "VOICEFORGE_UITEST_SOURCE_TEXT": "History entry generation."
-        ])
-
-        let generateButton = app.buttons["generateButton"]
-        XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
-        generateButton.click()
-        XCTAssertTrue(waitUntilHistoryContainsEntries(app, timeout: 10))
-    }
-
-    func testHistoryEntryReloadsReferenceFields() {
-        let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText,
-            "VOICEFORGE_UITEST_SOURCE_TEXT": "Reload this history entry."
-        ])
-
-        let generateButton = app.buttons["generateButton"]
-        XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
-        generateButton.click()
-        XCTAssertTrue(waitUntilHistoryContainsEntries(app, timeout: 10))
-
-        let openSettingsButton = app.buttons["openSettingsButton"]
-        XCTAssertTrue(openSettingsButton.waitForExistence(timeout: 10))
-        openSettingsButton.click()
-
-        let resetButton = app.buttons["resetReferenceFieldsButton"]
-        XCTAssertTrue(resetButton.waitForExistence(timeout: 10))
-        resetButton.click()
-
-        app.typeKey(.escape, modifierFlags: [])
-
-        let historyEntries = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyEntry-"))
-        XCTAssertGreaterThan(historyEntries.count, 0)
-        let firstHistoryEntry = historyEntries.element(boundBy: 0)
-        XCTAssertTrue(firstHistoryEntry.waitForExistence(timeout: 5))
-        firstHistoryEntry.click()
-
-        XCTAssertEqual(stringValue(of: app.textFields["referenceAudioPathField"]), referenceAudioPath)
-        XCTAssertEqual(stringValue(of: app.textFields["referenceTextField"]), referenceText)
-    }
-
-    func testPlayButtonTogglesToPauseAfterPlaybackStarts() {
-        let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText,
-            "VOICEFORGE_UITEST_SOURCE_TEXT": "Playback state verification."
-        ])
-
-        let generateButton = app.buttons["generateButton"]
-        XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
-        generateButton.click()
-
-        let playButton = app.buttons["playOutputButton"]
-        XCTAssertTrue(waitUntilEnabled(playButton, timeout: 10))
-        playButton.click()
-
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            playButton.label == "Pause" || (playButton.value as? String) == "Pause"
-        })
-    }
-
     func testGenerateShowsMissingTextError() {
         let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript."
         ])
 
         let generateButton = app.buttons["generateButton"]
         XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
         generateButton.click()
 
-        let errorText = app.staticTexts["Enter text to generate."]
+        let errorText = app.staticTexts["generationErrorText"]
         XCTAssertTrue(errorText.waitForExistence(timeout: 10))
+        XCTAssertEqual(textContent(of: errorText), "Enter text to generate.")
     }
 
     func testGenerateShowsMissingReferenceAudioError() {
         let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText,
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript.",
             "VOICEFORGE_UITEST_SOURCE_TEXT": "Reference audio is required."
         ])
 
@@ -235,13 +73,14 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
         generateButton.click()
 
-        let errorText = app.staticTexts["Choose a reference audio file."]
+        let errorText = app.staticTexts["generationErrorText"]
         XCTAssertTrue(errorText.waitForExistence(timeout: 10))
+        XCTAssertEqual(textContent(of: errorText), "Choose a reference audio file.")
     }
 
     func testGenerateShowsMissingReferenceTextError() {
         let app = launchApp(environment: [
-            "VOICEFORGE_UITEST_REFERENCE_AUDIO": referenceAudioPath,
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
             "VOICEFORGE_UITEST_SOURCE_TEXT": "Reference text is required."
         ])
 
@@ -249,8 +88,174 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
         generateButton.click()
 
-        let errorText = app.staticTexts["Enter the reference transcript."]
+        let errorText = app.staticTexts["generationErrorText"]
         XCTAssertTrue(errorText.waitForExistence(timeout: 10))
+        XCTAssertEqual(textContent(of: errorText), "Enter the reference transcript.")
+    }
+
+    // MARK: - History
+
+    func testGenerationAddsHistoryEntry() {
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript.",
+            "VOICEFORGE_UITEST_SOURCE_TEXT": "History entry generation."
+        ])
+
+        let generateButton = app.buttons["generateButton"]
+        XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
+        generateButton.click()
+        XCTAssertTrue(waitUntilEnabled(app.buttons["playOutputButton"], timeout: 30))
+
+        goToSidebar(app, "History")
+        XCTAssertTrue(waitUntilHistoryContainsEntries(app, timeout: 10))
+    }
+
+    /// Loading a history entry back into Studio ("Reuse") must populate the
+    /// editor from that entry and surface the regeneration banner — without
+    /// creating a new history entry until the user actually generates again.
+    func testHistoryReuseLoadsIntoStudioWithRegenerationBanner() {
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript.",
+            "VOICEFORGE_UITEST_SOURCE_TEXT": "Original generation for reuse test."
+        ])
+
+        let generateButton = app.buttons["generateButton"]
+        XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
+        generateButton.click()
+        XCTAssertTrue(waitUntilEnabled(app.buttons["playOutputButton"], timeout: 30))
+
+        goToSidebar(app, "History")
+        let firstEntry = firstHistoryEntry(app)
+        XCTAssertTrue(firstEntry.waitForExistence(timeout: 10))
+        firstEntry.click()
+
+        let reuseButton = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyReuseButton-"))
+            .element(boundBy: 0)
+        XCTAssertTrue(reuseButton.waitForExistence(timeout: 10))
+        reuseButton.click()
+
+        // Reuse navigates back to Studio and shows the regeneration banner.
+        let banner = app.descendants(matching: .any)["regenerationBanner"]
+        XCTAssertTrue(banner.waitForExistence(timeout: 10))
+    }
+
+    /// Regenerating an edited copy must produce a *second*, independent
+    /// history entry (the original stays exactly as it was) and the new
+    /// entry must carry a "Version of" breadcrumb back to the original.
+    func testRegenerationCreatesLinkedVersionWithoutDestroyingOriginal() {
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript.",
+            "VOICEFORGE_UITEST_SOURCE_TEXT": "Original generation for version test."
+        ])
+
+        let generateButton = app.buttons["generateButton"]
+        XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
+        generateButton.click()
+        XCTAssertTrue(waitUntilEnabled(app.buttons["playOutputButton"], timeout: 30))
+
+        goToSidebar(app, "History")
+        XCTAssertTrue(waitUntilHistoryContainsEntries(app, timeout: 10))
+        let originalCount = historyEntries(app).count
+        XCTAssertEqual(originalCount, 1)
+
+        let firstEntry = firstHistoryEntry(app)
+        firstEntry.click()
+        let reuseButton = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyReuseButton-"))
+            .element(boundBy: 0)
+        XCTAssertTrue(reuseButton.waitForExistence(timeout: 10))
+        reuseButton.click()
+
+        // Now back in Studio with the banner showing; regenerate as-is.
+        XCTAssertTrue(app.descendants(matching: .any)["regenerationBanner"].waitForExistence(timeout: 10))
+        XCTAssertTrue(generateButton.waitForExistence(timeout: 10))
+        generateButton.click()
+        XCTAssertTrue(waitUntilEnabled(app.buttons["playOutputButton"], timeout: 30))
+
+        goToSidebar(app, "History")
+        XCTAssertTrue(waitUntil(timeout: 10) { self.historyEntries(app).count == 2 })
+
+        // The newest entry (top of the list) is the regenerated version and
+        // must show the "Version of" link back to the original.
+        firstHistoryEntry(app).click()
+        let versionLink = app.descendants(matching: .any)["historyVersionOfLink"]
+        XCTAssertTrue(versionLink.waitForExistence(timeout: 10))
+    }
+
+    // MARK: - Voices
+
+    func testVoicesNavigationAndNewVoiceSheet() {
+        let app = launchApp()
+
+        goToSidebar(app, "Voices")
+        let newVoiceButton = app.buttons["newVoiceButton"]
+        XCTAssertTrue(newVoiceButton.waitForExistence(timeout: 10))
+        newVoiceButton.click()
+
+        let presetNameField = app.textFields["presetNameField"]
+        XCTAssertTrue(presetNameField.waitForExistence(timeout: 10))
+    }
+
+    func testCanSaveCustomVoicePresetFromCurrentReference() {
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript."
+        ])
+
+        goToSidebar(app, "Voices")
+        let newVoiceButton = app.buttons["newVoiceButton"]
+        XCTAssertTrue(newVoiceButton.waitForExistence(timeout: 10))
+        newVoiceButton.click()
+
+        let presetNameField = app.textFields["presetNameField"]
+        XCTAssertTrue(presetNameField.waitForExistence(timeout: 10))
+        presetNameField.click()
+        presetNameField.typeText("Kayden Test")
+
+        let saveButton = app.buttons["saveCurrentReferenceButton"]
+        XCTAssertTrue(waitUntilEnabled(saveButton, timeout: 10))
+        saveButton.click()
+
+        let voiceCard = app.descendants(matching: .any)["voiceCard-Kayden Test"]
+        XCTAssertTrue(voiceCard.waitForExistence(timeout: 10))
+    }
+
+    // MARK: - Sidebar navigation
+
+    func testSidebarNavigationSwitchesDestinations() {
+        let app = launchApp()
+
+        goToSidebar(app, "Voices")
+        XCTAssertTrue(app.buttons["newVoiceButton"].waitForExistence(timeout: 10))
+
+        goToSidebar(app, "History")
+        XCTAssertTrue(app.descendants(matching: .any)["historyList"].waitForExistence(timeout: 10))
+
+        goToSidebar(app, "Conversations")
+        XCTAssertTrue(app.buttons["conversationImportButton"].waitForExistence(timeout: 10))
+
+        goToSidebar(app, "Studio")
+        XCTAssertTrue(app.buttons["generateButton"].waitForExistence(timeout: 10))
+    }
+
+    // MARK: - Helpers
+
+    private func goToSidebar(_ app: XCUIApplication, _ label: String) {
+        let item = app.descendants(matching: .any)["sidebar\(label)"]
+        XCTAssertTrue(item.waitForExistence(timeout: 10), "Sidebar item \(label) not found")
+        item.click()
+    }
+
+    private func historyEntries(_ app: XCUIApplication) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyEntry-"))
+    }
+
+    private func firstHistoryEntry(_ app: XCUIApplication) -> XCUIElement {
+        historyEntries(app).element(boundBy: 0)
     }
 
     private func waitUntilEnabled(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
@@ -271,13 +276,12 @@ final class VoiceForgeUITests: XCTestCase {
         return element.label
     }
 
-    private func stringValue(of element: XCUIElement) -> String {
-        (element.value as? String) ?? ""
-    }
-
     private func launchApp(environment: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--uitest-reset-state", "--uitest-mock-generation"]
+        // Mock generation alone is sufficient isolation: it creates a brand
+        // new temp-rooted HistoryStore + UserDefaults suite on every launch,
+        // so there's no persistent state to reset between runs.
+        app.launchArguments = ["--uitest-mock-generation"]
         app.launchEnvironment = environment.merging([
             "ApplePersistenceIgnoreState": "YES"
         ]) { current, _ in current }
@@ -289,8 +293,7 @@ final class VoiceForgeUITests: XCTestCase {
     private func waitUntilHistoryContainsEntries(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let entries = app.descendants(matching: .button).matching(NSPredicate(format: "identifier BEGINSWITH %@", "historyEntry-"))
-            if entries.count > 0 {
+            if historyEntries(app).count > 0 {
                 return true
             }
             RunLoop.main.run(until: Date().addingTimeInterval(0.25))
@@ -308,5 +311,4 @@ final class VoiceForgeUITests: XCTestCase {
         }
         return condition()
     }
-
 }

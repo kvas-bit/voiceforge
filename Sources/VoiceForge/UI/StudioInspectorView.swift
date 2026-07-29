@@ -20,10 +20,12 @@ struct StudioInspectorView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(currentVoiceName)
                             .font(.system(size: 13, weight: .semibold))
+                            .accessibilityIdentifier("studioVoiceNameText")
                         Text(currentVoiceDetail)
                             .font(.system(size: 11))
                             .foregroundStyle(VoiceForgeTheme.tertiaryText)
                             .lineLimit(1)
+                            .accessibilityIdentifier("studioVoiceDetailText")
                     }
                     Spacer()
                 }

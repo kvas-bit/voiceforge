@@ -48,13 +48,18 @@ targets:
       - path: Tests/VoiceForgeTests
     dependencies:
       - target: VoiceForgeCore
+      - target: VoiceForge
     settings:
       base:
         PRODUCT_NAME: VoiceForgeTests
         PRODUCT_BUNDLE_IDENTIFIER: com.kaviantoniovasudeo.VoiceForgeTests
         GENERATE_INFOPLIST_FILE: YES
-        BUNDLE_LOADER: ""
-        TEST_HOST: ""
+        # Hosted inside VoiceForge.app: AppViewModel and other UI-layer types
+        # tested here live in the VoiceForge app target, not VoiceForgeCore,
+        # and a standalone (non-hosted) bundle can't link against an
+        # application product's symbols.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/VoiceForge.app/Contents/MacOS/VoiceForge"
+        BUNDLE_LOADER: "$(TEST_HOST)"
   VoiceForgeUITests:
     type: bundle.ui-testing
     platform: macOS

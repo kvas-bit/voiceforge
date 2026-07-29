@@ -14,6 +14,7 @@
 		2BF30BE8B5CE6A87880FE942 /* AppViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */; };
 		2E8BA415C6815E568D5A9DBB /* AudioPlayerControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F17F5601A65EE2C4CFB133B6 /* AudioPlayerControllerTests.swift */; };
 		3D8D1264275F6B4871858D65 /* VoiceForgeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8D4CE3CC7DE8CD3EF40E81 /* VoiceForgeUITests.swift */; };
+		48210ED14D2E088E917139BD /* ConversationScriptParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB86E7014B6B0128EB5C2ED /* ConversationScriptParserTests.swift */; };
 		53EE0B7EE4E3DFA06E6657F3 /* TagCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3484BCABA91D3FC1F76543 /* TagCatalogTests.swift */; };
 		542573BA27F0523F3A196A24 /* PromptTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB7164D62C208FFC4EDE1B /* PromptTextEditor.swift */; };
 		58251A51A1652FAB6C9E9B73 /* SpeechGenerationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */; };
@@ -44,6 +45,7 @@
 		E09D82A77F78089CD5B03D9C /* StoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 353FE045CD145C57FD257E44 /* StoreTests.swift */; };
 		E471DAF0594DAABBEEB51C47 /* VoiceForgeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D0BCD49A6C20E8D23FE3C39F /* VoiceForgeCore.framework */; };
 		E60DB61CA4BBF4CA15734EAA /* ConversationPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967F68406F07F70F1181D528 /* ConversationPlayer.swift */; };
+		E93B3B8D79822E47DAD4DB34 /* ConversationScriptParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C25B103496C30CA1385C855 /* ConversationScriptParser.swift */; };
 		EB367166BF068AC82EBD6BCC /* ConversationPlaybackBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01443E35F091B191CEBBE70 /* ConversationPlaybackBar.swift */; };
 		ECB46454EF9AC866A3D438C8 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF24531D0DFC212F1CAFF655 /* TestHelpers.swift */; };
 /* End PBXBuildFile section */
@@ -69,6 +71,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = B78A9947699A122D9BBCBF82;
 			remoteInfo = VoiceForgeCore;
+		};
+		FA4D160076F432A83B7A0636 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C1EA9A23B75A5FB2609B2799 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B4AC1A8D06872A17F2A0FB62;
+			remoteInfo = VoiceForge;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -99,6 +108,7 @@
 
 /* Begin PBXFileReference section */
 		0DE9EB37FC153C23239F6C3F /* PromptFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptFormatter.swift; sourceTree = "<group>"; };
+		1AB86E7014B6B0128EB5C2ED /* ConversationScriptParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationScriptParserTests.swift; sourceTree = "<group>"; };
 		1E6F523FE238177587B59C79 /* StudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioView.swift; sourceTree = "<group>"; };
 		22EB7164D62C208FFC4EDE1B /* PromptTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTextEditor.swift; sourceTree = "<group>"; };
 		353FE045CD145C57FD257E44 /* StoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreTests.swift; sourceTree = "<group>"; };
@@ -106,6 +116,7 @@
 		3AAC10C0BC12035DC6FAEEBC /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		49D3C70E038FE4E70ACC7BB4 /* SpeechGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGenerationService.swift; sourceTree = "<group>"; };
 		4A8D4CE3CC7DE8CD3EF40E81 /* VoiceForgeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceForgeUITests.swift; sourceTree = "<group>"; };
+		4C25B103496C30CA1385C855 /* ConversationScriptParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationScriptParser.swift; sourceTree = "<group>"; };
 		508FD370FF9ADB58D7263ED8 /* StudioInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioInspectorView.swift; sourceTree = "<group>"; };
 		510E08C71D3C40D6760E15A1 /* TagCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagCatalog.swift; sourceTree = "<group>"; };
 		51B45942F2562061CB6D7654 /* PromptFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptFormatterTests.swift; sourceTree = "<group>"; };
@@ -164,6 +175,7 @@
 			children = (
 				D7063D899FD5D15FFB21485C /* AppViewModelTests.swift */,
 				F17F5601A65EE2C4CFB133B6 /* AudioPlayerControllerTests.swift */,
+				1AB86E7014B6B0128EB5C2ED /* ConversationScriptParserTests.swift */,
 				5E7CEC5C1CFC74C32E4386C0 /* PersistentCoordinatorTests.swift */,
 				51B45942F2562061CB6D7654 /* PromptFormatterTests.swift */,
 				8136ED177A4E84FC332E2CE0 /* SpeechGenerationServiceTests.swift */,
@@ -240,6 +252,7 @@
 			isa = PBXGroup;
 			children = (
 				3A38FDD53055F3E802F79553 /* AudioPlayerController.swift */,
+				4C25B103496C30CA1385C855 /* ConversationScriptParser.swift */,
 				3AAC10C0BC12035DC6FAEEBC /* Models.swift */,
 				BCA786CC19D67E4C5AB12C3F /* Models+Conversation.swift */,
 				84623D5A5078FE0486B6327C /* PersistentCoordinator.swift */,
@@ -307,6 +320,7 @@
 			);
 			dependencies = (
 				C7394509E60815F2908FC64E /* PBXTargetDependency */,
+				987C3E92B32773D52C22D53A /* PBXTargetDependency */,
 			);
 			name = VoiceForgeTests;
 			packageProductDependencies = (
@@ -441,6 +455,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				98E870F4581BA7CDBFEC67D5 /* AudioPlayerController.swift in Sources */,
+				E93B3B8D79822E47DAD4DB34 /* ConversationScriptParser.swift in Sources */,
 				5A1ABDA24EC3891877860239 /* Models+Conversation.swift in Sources */,
 				A9550CF98225340A1E4E259D /* Models.swift in Sources */,
 				75081C1F2B61C52936C8D5FA /* PersistentCoordinator.swift in Sources */,
@@ -457,6 +472,7 @@
 			files = (
 				2BF30BE8B5CE6A87880FE942 /* AppViewModelTests.swift in Sources */,
 				2E8BA415C6815E568D5A9DBB /* AudioPlayerControllerTests.swift in Sources */,
+				48210ED14D2E088E917139BD /* ConversationScriptParserTests.swift in Sources */,
 				6BCA1DED4A3CC9E910C8B53C /* PersistentCoordinatorTests.swift in Sources */,
 				82A845EC60D3DD675174C071 /* PromptFormatterTests.swift in Sources */,
 				58251A51A1652FAB6C9E9B73 /* SpeechGenerationServiceTests.swift in Sources */,
@@ -478,6 +494,11 @@
 			isa = PBXTargetDependency;
 			target = B78A9947699A122D9BBCBF82 /* VoiceForgeCore */;
 			targetProxy = 45B52EECDECC5AC8FCBB631A /* PBXContainerItemProxy */;
+		};
+		987C3E92B32773D52C22D53A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B4AC1A8D06872A17F2A0FB62 /* VoiceForge */;
+			targetProxy = FA4D160076F432A83B7A0636 /* PBXContainerItemProxy */;
 		};
 		C7394509E60815F2908FC64E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -512,7 +533,7 @@
 		52DC7D2E74CF960F514D4723 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "";
+				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -523,7 +544,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.kaviantoniovasudeo.VoiceForgeTests;
 				PRODUCT_NAME = VoiceForgeTests;
 				SDKROOT = macosx;
-				TEST_HOST = "";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceForge.app/Contents/MacOS/VoiceForge";
 			};
 			name = Release;
 		};
@@ -646,7 +667,7 @@
 		CEBA73143392BED5B1A997DA /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "";
+				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -657,7 +678,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.kaviantoniovasudeo.VoiceForgeTests;
 				PRODUCT_NAME = VoiceForgeTests;
 				SDKROOT = macosx;
-				TEST_HOST = "";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceForge.app/Contents/MacOS/VoiceForge";
 			};
 			name = Debug;
 		};

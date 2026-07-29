@@ -228,7 +228,7 @@ enum PersistentError: Error {
 
 // MARK: - Registry (thread-safe, lazily resolved)
 
-final class CoordinatorRegistry: @unchecked Sendable {
+public final class CoordinatorRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private var coordinator: PersistentGenerationCoordinator?
     private let fileManager: FileManager

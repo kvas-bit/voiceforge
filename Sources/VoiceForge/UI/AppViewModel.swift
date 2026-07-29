@@ -56,6 +56,9 @@ final class AppViewModel: ObservableObject {
     @Published var generationError = ""
     @Published var lastFormattedPrompt = ""
     @Published var lastOutputURL: URL?
+    /// When set (via `loadHistory`), the next completed generation is stamped
+    /// as a new version of this history entry, then this is cleared.
+    @Published var regeneratingFromID: UUID?
     @Published var history: [GenerationHistoryItem]
     @Published var presets: [VoicePreset]
     @Published var selectedPresetID: UUID?
@@ -271,8 +274,18 @@ final class AppViewModel: ObservableObject {
         lastOutputURL = URL(fileURLWithPath: item.outputPath)
         previewingVoiceID = nil
         currentPlayingHistoryID = nil
+        // Marks the *next* generate() as a new version of this entry. The
+        // original is never mutated or deleted — generate() always inserts a
+        // fresh history item; this just carries the breadcrumb back to it.
+        regeneratingFromID = item.id
         // Do NOT auto-play; the user can hit the dock or row play button.
         audioPlayer.stop()
+    }
+
+    /// Detaches from "regenerating a version of X" so the next `generate()`
+    /// starts an unrelated, standalone entry instead.
+    func clearRegenerationSource() {
+        regeneratingFromID = nil
     }
 
     func generate() {
@@ -640,13 +653,15 @@ final class AppViewModel: ObservableObject {
             formattedPrompt: result.formattedPrompt,
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
-            outputPath: result.outputURL.path
+            outputPath: result.outputURL.path,
+            regeneratedFromID: regeneratingFromID
         )
 
         history.insert(historyItem, at: 0)
         historyStore.save(history)
         previewingVoiceID = nil
         currentPlayingHistoryID = nil
+        regeneratingFromID = nil
         try? audioPlayer.load(url: result.outputURL)
     }
 

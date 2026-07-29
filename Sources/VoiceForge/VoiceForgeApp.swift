@@ -41,8 +41,9 @@ struct VoiceForgeApp: App {
                         outputURL: outURL, standardOutput: "", standardError: "")
                 }
             )
-            let testDefaults = UserDefaults(suiteName: "VoiceForgeUITest-\(UUID().uuidString)")!
-            testDefaults.removePersistentDomain(forName: "VoiceForgeUITest-\(UUID().uuidString)")
+            let testSuiteName = "VoiceForgeUITest-\(UUID().uuidString)"
+            let testDefaults = UserDefaults(suiteName: testSuiteName)!
+            testDefaults.removePersistentDomain(forName: testSuiteName)
             vm = AppViewModel(defaults: testDefaults, historyStore: store,
                               generationService: mockService)
         } else {
@@ -90,6 +91,7 @@ private struct VoiceForgeCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Generation") {
                 viewModel.sourceText = ""
+                viewModel.clearRegenerationSource()
                 viewModel.destination = .studio
             }
             .keyboardShortcut("n", modifiers: .command)

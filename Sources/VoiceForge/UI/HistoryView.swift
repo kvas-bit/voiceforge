@@ -158,6 +158,29 @@ struct HistoryView: View {
                     }
                 }
 
+                if let sourceID = item.regeneratedFromID {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        Text("Version of")
+                            .font(.system(size: 11))
+                            .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        if let original = viewModel.history.first(where: { $0.id == sourceID }) {
+                            Button(original.name) {
+                                selectedID = original.id
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(VoiceForgeTheme.accent)
+                        } else {
+                            Text("an earlier generation (no longer in history)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        }
+                    }
+                    .accessibilityIdentifier("historyVersionOfLink")
+                }
+
                 if item.type == .single {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Formatted prompt")

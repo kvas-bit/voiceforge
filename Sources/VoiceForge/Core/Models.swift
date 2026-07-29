@@ -35,6 +35,12 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
     public let outputPath: String
     public let type: HistoryItemType
     public let conversationLines: [ConversationLine]?
+    /// The `id` of the history entry this one was regenerated from, if any.
+    /// Set when the user loads an existing generation into Studio, edits it,
+    /// and generates again — the edit always produces a brand-new entry (the
+    /// original is never mutated or deleted); this field is just the lean
+    /// breadcrumb linking the new version back to its source.
+    public let regeneratedFromID: UUID?
 
     public init(
         id: UUID,
@@ -46,7 +52,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         referenceText: String,
         outputPath: String,
         type: HistoryItemType = .single,
-        conversationLines: [ConversationLine]? = nil
+        conversationLines: [ConversationLine]? = nil,
+        regeneratedFromID: UUID? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -58,6 +65,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.outputPath = outputPath
         self.type = type
         self.conversationLines = conversationLines
+        self.regeneratedFromID = regeneratedFromID
     }
 
     /// Returns a copy with a new `outputPath`. Used by the history migration
@@ -74,7 +82,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
             referenceText: referenceText,
             outputPath: newPath,
             type: type,
-            conversationLines: conversationLines
+            conversationLines: conversationLines,
+            regeneratedFromID: regeneratedFromID
         )
     }
 
@@ -92,7 +101,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
 
     // Codable migration: pre-existing history JSON has no `name` field, so default to autoName.
     private enum CodingKeys: String, CodingKey {
-        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath, type, conversationLines
+        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath, type, conversationLines, regeneratedFromID
     }
 
     public init(from decoder: Decoder) throws {
@@ -108,6 +117,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.name = decodedName.isEmpty ? Self.autoName(from: sourceText) : decodedName
         self.type = try c.decodeIfPresent(HistoryItemType.self, forKey: .type) ?? .single
         self.conversationLines = try c.decodeIfPresent([ConversationLine].self, forKey: .conversationLines)
+        self.regeneratedFromID = try c.decodeIfPresent(UUID.self, forKey: .regeneratedFromID)
     }
 }
 

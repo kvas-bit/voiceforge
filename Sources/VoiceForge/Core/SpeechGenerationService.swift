@@ -91,7 +91,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
             executableURL: executableURL, fileManager: fileManager)
     }
 
-    static func __internalInit(
+    public static func __internalInit(
         executableURL: URL?,
         renderRoot: URL?,
         fileManager: FileManager,
@@ -109,7 +109,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
     }
 
     /// Convenience for mock output URL under a given root.
-    static func __tempOutputURL(forID id: UUID, under root: URL) throws -> URL {
+    public static func __tempOutputURL(forID id: UUID, under root: URL) throws -> URL {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root.appendingPathComponent("\(id.uuidString).wav")
     }
@@ -402,7 +402,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
 
     // MARK: - Process execution
 
-    package func run(
+    func run(
         executableURL: URL,
         arguments: [String],
         outputURL: URL,
@@ -458,7 +458,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
     /// The real process launcher. Stores the process before running, checks
     /// cancellation state under the lock both before and after `process.run()`,
     /// and starts concurrent pipe readers only on successful launch.
-    static let launchProcess: @Sendable (URL, [String], ProcessBox) async throws -> (stdout: String, stderr: String, exitCode: Int32) = {
+    public static let launchProcess: @Sendable (URL, [String], ProcessBox) async throws -> (stdout: String, stderr: String, exitCode: Int32) = {
         executableURL, arguments, processBox in
 
         let process = Process()
@@ -513,7 +513,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
 
     /// Validates that the file at `outputURL` is a real WAV with RIFF and WAVE
     /// markers. The error message includes the resolved path for diagnostics.
-    package func validateWAVOutput(at outputURL: URL) throws {
+    func validateWAVOutput(at outputURL: URL) throws {
         let path = outputURL.path
         guard fileManager.fileExists(atPath: path) else {
             throw SpeechGenerationError.invalidWAV(
@@ -555,7 +555,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
 
 /// Thread-safe holder so an `onCancel` block can reach the in-flight `Process`
 /// (or its `Task`) and terminate it. All mutable state is guarded by `NSLock`.
-final class ProcessBox: @unchecked Sendable {
+public final class ProcessBox: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     private var innerTask: Task<Void, Never>?
