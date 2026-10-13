@@ -30,8 +30,16 @@ class PersistentServerTests(unittest.TestCase):
         spec.loader.exec_module(server)
         original_stdin = sys.stdin
         loads = []
+        drama_loads = 0
         adapter = types.ModuleType("drama3_mlx.server_adapter")
-        adapter.load_model = lambda: (loads.append("drama-3") or FakeDrama3())
+        def load_drama():
+            nonlocal drama_loads
+            drama_loads += 1
+            loads.append("drama-3")
+            if drama_loads == 2:
+                raise RuntimeError("mock load failure")
+            return FakeDrama3()
+        adapter.load_model = load_drama
         tts = types.ModuleType("mlx_speech.tts")
         tts.load = lambda name: (loads.append(name) or FakeS2())
         audio = types.ModuleType("mlx_speech.audio")
@@ -53,6 +61,7 @@ class PersistentServerTests(unittest.TestCase):
                     {"action": "generate", "id": "a", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "drama-3"},
                     {"action": "generate", "id": "b", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "fish-s2-pro"},
                     {"action": "generate", "id": "c", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "drama-3"},
+                    {"action": "generate", "id": "d", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "fish-s2-pro"},
                 ]
                 server.model = server.write_wav = server.loaded_model = None
                 server.sys.stdin = io.StringIO("\n".join(json.dumps(x) for x in requests))
@@ -61,9 +70,10 @@ class PersistentServerTests(unittest.TestCase):
                     server.main()
                 events = [json.loads(line[6:]) for line in capture.getvalue().splitlines() if line.startswith("EVENT:")]
                 loads_by_event = [event["model"] for event in events if event["event"] == "loading_model"]
-                self.assertEqual(loads, ["drama-3", "fish-s2-pro", "drama-3"])
+                self.assertEqual(loads, ["drama-3", "fish-s2-pro", "drama-3", "fish-s2-pro"])
                 self.assertEqual(loads_by_event, loads)
-                self.assertTrue(any(event["event"] == "done" and event["id"] == "c" for event in events), events)
+                self.assertTrue(any(event["event"] == "error" and event["id"] == "c" for event in events), events)
+                self.assertTrue(any(event["event"] == "done" and event["id"] == "d" for event in events), events)
                 self.assertTrue(out.is_file())
         finally:
             sys.stdin = original_stdin

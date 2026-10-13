@@ -20,6 +20,8 @@ def load_model(model_name, req_id):
     if loaded_model is not None:
         del model
         model = None
+        loaded_model = None
+        write_wav = None
         gc.collect()
         try:
             import mlx.core as mx
