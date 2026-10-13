@@ -69,7 +69,7 @@ public struct ConversationItem: Codable, Equatable, Identifiable, Sendable {
         createdAt: Date = Date(),
         name: String = "",
         lines: [ConversationLine],
-        globalModel: String = "fish-s2-pro",
+        globalModel: String = TTSModel.default.rawValue,
         globalMaxNewTokens: Int = 1500,
         globalEditType: String = "none"
     ) {
@@ -80,6 +80,18 @@ public struct ConversationItem: Codable, Equatable, Identifiable, Sendable {
         self.globalModel = globalModel
         self.globalMaxNewTokens = globalMaxNewTokens
         self.globalEditType = globalEditType
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, createdAt, name, lines, globalModel, globalMaxNewTokens, globalEditType }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        name = try c.decode(String.self, forKey: .name)
+        lines = try c.decode([ConversationLine].self, forKey: .lines)
+        globalModel = try c.decodeIfPresent(String.self, forKey: .globalModel) ?? TTSModel.fishS2Pro.rawValue
+        globalMaxNewTokens = try c.decodeIfPresent(Int.self, forKey: .globalMaxNewTokens) ?? 1500
+        globalEditType = try c.decodeIfPresent(String.self, forKey: .globalEditType) ?? "none"
     }
 
     public static func autoName(from lines: [ConversationLine], limit: Int = 40) -> String {

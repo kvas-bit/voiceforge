@@ -10,6 +10,7 @@ struct PersistentRequest: Codable {
     let ref_text: String?
     let output: String?
     let max_new_tokens: Int?
+    let model: String?
 }
 struct PersistentEvent: Codable {
     let event: String           // starting|loading_model|ready|accepted|generating|writing|done|error
@@ -28,7 +29,7 @@ enum ShebangParser {
               let firstLine = String(decoding: data.prefix(128), as: UTF8.self)
                 .split(separator: "\n").first,
               firstLine.hasPrefix("#!") else { return nil }
-        var shebang = String(firstLine.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+        let shebang = String(firstLine.dropFirst(2)).trimmingCharacters(in: .whitespaces)
         if shebang.hasPrefix("/usr/bin/env ") {
             let tool = shebang.replacingOccurrences(of: "/usr/bin/env ", with: "")
                 .trimmingCharacters(in: .whitespaces)
@@ -78,7 +79,7 @@ actor PersistentGenerationCoordinator {
     // MARK: - Lifecycle
 
     /// Start the helper and warm the model once. Idempotent.
-    func prewarmOnce() async -> Bool {
+    func prewarmOnce(model: String = TTSModel.default.rawValue) async -> Bool {
         if isPrepared { return true }
         if preparing {
             // Another caller is already preparing — await its result.
@@ -95,7 +96,7 @@ actor PersistentGenerationCoordinator {
         defer { if !isPrepared { shutdown() } }
         do {
             let startReq = PersistentRequest(action: "start", id: "prewarm",
-                text: nil, ref_audio: nil, ref_text: nil, output: nil, max_new_tokens: nil)
+                text: nil, ref_audio: nil, ref_text: nil, output: nil, max_new_tokens: nil, model: model)
             try stdinHandle?.write(contentsOf: encodeLine(startReq))
             while let event = try await readNextEvent() {
                 if event.event == "ready" && event.id == "prewarm" { isPrepared = true; return true }
@@ -116,7 +117,7 @@ actor PersistentGenerationCoordinator {
     /// `PersistentError.notReady` that the caller can fall back to CLI on.
     func generate(
         id: String, text: String, referenceAudio: String,
-        referenceText: String, output: String, maxNewTokens: Int? = nil
+        referenceText: String, output: String, model: String = TTSModel.default.rawValue, maxNewTokens: Int? = nil
     ) async throws -> String {
         guard isPrepared else { throw PersistentError.notReady }
 
@@ -139,7 +140,7 @@ actor PersistentGenerationCoordinator {
 
         let req = PersistentRequest(action: "generate", id: id,
             text: text, ref_audio: referenceAudio, ref_text: referenceText,
-            output: output, max_new_tokens: maxNewTokens)
+            output: output, max_new_tokens: maxNewTokens, model: model)
         try stdin.write(contentsOf: encodeLine(req))
 
         var accepted = false

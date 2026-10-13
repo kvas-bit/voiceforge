@@ -8,6 +8,7 @@ public enum VoiceForgeStorageKeys {
     /// Off by default — local Ollama prompt intelligence is strictly opt-in.
     public static let ollamaEnabled = "voiceforge.ollamaEnabled"
     public static let selectedOllamaModel = "voiceforge.selectedOllamaModel"
+    public static let selectedTTSModel = "voiceforge.selectedTTSModel"
 }
 
 public final class VoicePresetStore {

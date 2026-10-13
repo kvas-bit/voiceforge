@@ -7,6 +7,7 @@ public enum SpeechGenerationError: LocalizedError, Sendable {
     case missingExecutable([String])
     case shellFailure(String)
     case invalidWAV(String)
+    case invalidDrama3Prompt(String)
 
     public var errorDescription: String? {
         switch self {
@@ -23,6 +24,8 @@ public enum SpeechGenerationError: LocalizedError, Sendable {
             return message
         case .invalidWAV(let detail):
             return detail
+        case .invalidDrama3Prompt(let token):
+            return "Drama 3 cannot accept the structural token \(token) in prompt text. Remove model control tokens and use bracketed directions such as [whispers]."
         }
     }
 }
@@ -200,23 +203,23 @@ public final class SpeechGenerationService: @unchecked Sendable {
         referenceAudioPath: String,
         referenceText: String,
         outputURL: URL,
-        model: String = "fish-s2-pro",
+        model: String = TTSModel.default.rawValue,
         maxNewTokens: Int? = nil,
         editType: String? = nil,
         editInfo: String? = nil
     ) -> [String] {
         var args: [String] = [
-            "--model", model,
             "--text", formattedText,
             "--reference-audio", referenceAudioPath,
             "--reference-text", referenceText,
             "-o", outputURL.path
         ]
+        if model != TTSModel.drama3.rawValue { args.insert(contentsOf: ["--model", model], at: 0) }
         if let maxNewTokens {
             args.append(contentsOf: ["--max-new-tokens", String(maxNewTokens)])
         }
         // Fish S2 Pro does not accept Step-Audio edit flags.
-        if model != "fish-s2-pro" {
+        if model != TTSModel.fishS2Pro.rawValue {
             if let editType, !editType.isEmpty {
                 args.append(contentsOf: ["--edit-type", editType])
             }
@@ -280,10 +283,10 @@ public final class SpeechGenerationService: @unchecked Sendable {
 
     /// Prewarms the persistent helper (loads model once). Call once at app start.
     /// Returns `true` if the helper is ready; `false` means CLI fallback will be used.
-    public func prewarmPersistentHelper() async -> Bool {
+    public func prewarmPersistentHelper(model: String = TTSModel.default.rawValue) async -> Bool {
         guard usePersistent else { return false }
         let c = coordinatorRegistry.getOrCreate()
-        return await c.prewarmOnce()
+        return await c.prewarmOnce(model: model)
     }
 
     /// Shuts down the persistent helper.
@@ -305,14 +308,18 @@ public final class SpeechGenerationService: @unchecked Sendable {
         // Mock path — writes synthetic WAV immediately.
         if let mock = mockGenerate { return try await mock(request) }
 
-        let formattedPrompt = formatter.format(text: sourceText, emotion: request.emotionText)
+        let formattedPrompt = formatter.format(text: sourceText, emotion: request.emotionText, model: request.model)
+        if request.model == TTSModel.drama3.rawValue,
+           let token = Self.invalidDrama3Token(in: formattedPrompt) {
+            throw SpeechGenerationError.invalidDrama3Prompt(token)
+        }
         let outputURL = try outputURL(forID: request.id)
         try ensureOutputDirectoryExists(for: outputURL)
 
         // Only try persistent when enabled.
         if usePersistent {
             let coordinator = coordinatorRegistry.getOrCreate()
-            let helperReady = await coordinator.prewarmOnce()
+            let helperReady = await coordinator.prewarmOnce(model: request.model)
             if helperReady {
                 do {
                     // Try persistent path. Only pre-accept failures reach CLI fallback.
@@ -323,6 +330,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
                             referenceAudio: referenceAudioPath,
                             referenceText: referenceText,
                             output: outputURL.path,
+                            model: request.model,
                             maxNewTokens: request.maxNewTokens
                         )
                         try validateWAVOutput(at: outputURL)
@@ -361,15 +369,18 @@ public final class SpeechGenerationService: @unchecked Sendable {
         }
 
         // Only pre-accept failures reach here — fall back to CLI.
-        let exeURL = try resolveExecutable()
+        let (exeURL, prefixArgs) = try resolveExecutable(model: request.model)
         let argv = arguments(
             formattedText: formattedPrompt,
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
             outputURL: outputURL,
+            model: request.model,
             maxNewTokens: request.maxNewTokens
         )
-        let ttsArgs = ["tts"] + argv
+        let ttsArgs = request.model == TTSModel.drama3.rawValue
+            ? prefixArgs + argv
+            : ["tts"] + argv
         do {
             let result = try await run(
                 executableURL: exeURL,
@@ -385,14 +396,41 @@ public final class SpeechGenerationService: @unchecked Sendable {
         }
     }
 
-    private func resolveExecutable() throws -> URL {
+    private func resolveExecutable(model: String) throws -> (URL, [String]) {
         if let exe = executableURL {
-            return exe
+            return (exe, [])
+        }
+        if model == TTSModel.drama3.rawValue {
+            let paths = [NSHomeDirectory() + "/.local/bin/drama3-tts", "/opt/homebrew/bin/drama3-tts", "/usr/local/bin/drama3-tts"]
+                + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin").split(separator: ":").map { $0 + "/drama3-tts" }
+            if let cli = paths.first(where: { fileManager.isExecutableFile(atPath: $0) }) {
+                return (URL(fileURLWithPath: cli), [])
+            }
+            if let mlx = Self.discoverMLXSpeech(), let python = ShebangParser.resolvePython(mlxPath: mlx.path, fileManager: fileManager) {
+                return (python, ["-m", "drama3_mlx.cli"])
+            }
+            throw SpeechGenerationError.missingExecutable(paths + ["python -m drama3_mlx.cli"])
         }
         if let discovered = Self.discoverMLXSpeech() {
-            return discovered
+            return (discovered, [])
         }
         throw SpeechGenerationError.missingExecutable(Self.discoverySearchPaths())
+    }
+
+    private static func invalidDrama3Token(in text: String) -> String? {
+        for token in ["<|im_start|>", "<|im_end|>", "<|voice|>", "<|text|>", "<|interleave|>", "<|semantic:"] where text.contains(token) {
+            return token
+        }
+        let pattern = #"<\|speaker(?::[0-9]+)?\|>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let range = Range(match.range, in: text) else { continue }
+            let token = String(text[range])
+            let number = token.dropFirst("<|speaker:".count).dropLast(2)
+            guard let id = Int(number), (0...15).contains(id), String(id) == number else { return token }
+        }
+        if text.contains("<|speaker") { return "<|speaker...|>" }
+        return nil
     }
 
     private func ensureOutputDirectoryExists(for outputURL: URL) throws {

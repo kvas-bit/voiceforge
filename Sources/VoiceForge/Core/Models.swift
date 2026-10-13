@@ -1,5 +1,14 @@
 import Foundation
 
+public enum TTSModel: String, CaseIterable, Codable, Identifiable, Sendable {
+    case drama3 = "drama-3"
+    case fishS2Pro = "fish-s2-pro"
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self { case .drama3: "Fish Audio Drama 3"; case .fishS2Pro: "Fish Audio S2 Pro" }
+    }
+}
+
 public struct VoicePreset: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
@@ -41,6 +50,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
     /// original is never mutated or deleted); this field is just the lean
     /// breadcrumb linking the new version back to its source.
     public let regeneratedFromID: UUID?
+    public let model: String?
 
     public init(
         id: UUID,
@@ -53,7 +63,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         outputPath: String,
         type: HistoryItemType = .single,
         conversationLines: [ConversationLine]? = nil,
-        regeneratedFromID: UUID? = nil
+        regeneratedFromID: UUID? = nil,
+        model: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -66,6 +77,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.type = type
         self.conversationLines = conversationLines
         self.regeneratedFromID = regeneratedFromID
+        self.model = model
     }
 
     /// Returns a copy with a new `outputPath`. Used by the history migration
@@ -83,7 +95,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
             outputPath: newPath,
             type: type,
             conversationLines: conversationLines,
-            regeneratedFromID: regeneratedFromID
+            regeneratedFromID: regeneratedFromID,
+            model: model
         )
     }
 
@@ -101,7 +114,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
 
     // Codable migration: pre-existing history JSON has no `name` field, so default to autoName.
     private enum CodingKeys: String, CodingKey {
-        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath, type, conversationLines, regeneratedFromID
+        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath, type, conversationLines, regeneratedFromID, model
     }
 
     public init(from decoder: Decoder) throws {
@@ -118,6 +131,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.type = try c.decodeIfPresent(HistoryItemType.self, forKey: .type) ?? .single
         self.conversationLines = try c.decodeIfPresent([ConversationLine].self, forKey: .conversationLines)
         self.regeneratedFromID = try c.decodeIfPresent(UUID.self, forKey: .regeneratedFromID)
+        self.model = try c.decodeIfPresent(String.self, forKey: .model)
     }
 }
 
@@ -138,7 +152,7 @@ public struct GenerationRequest: Sendable {
         emotionText: String,
         referenceAudioPath: String,
         referenceText: String,
-        model: String = "fish-s2-pro",
+        model: String = TTSModel.default.rawValue,
         maxNewTokens: Int? = nil,
         editType: String? = nil,
         editInfo: String? = nil
@@ -153,6 +167,10 @@ public struct GenerationRequest: Sendable {
         self.editType = editType
         self.editInfo = editInfo
     }
+}
+
+public extension TTSModel {
+    static let `default`: TTSModel = .drama3
 }
 
 public struct GenerationResult: Sendable {

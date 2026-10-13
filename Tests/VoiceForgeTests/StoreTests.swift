@@ -7,6 +7,15 @@ import Testing
 #endif
 
 struct StoreTests {
+    @Test func conversationModelRoundTripsAndLegacyManifestDefaultsToS2Pro() throws {
+        let item = ConversationItem(lines: [], globalModel: TTSModel.drama3.rawValue)
+        let decoded = try JSONDecoder().decode(ConversationItem.self, from: JSONEncoder().encode(item))
+        #expect(decoded.globalModel == TTSModel.drama3.rawValue)
+        let legacy = #"{"id":"11111111-2222-3333-4444-555555555555","createdAt":0,"name":"Old","lines":[]}"#.data(using: .utf8)!
+        let old = try JSONDecoder().decode(ConversationItem.self, from: legacy)
+        #expect(old.globalModel == TTSModel.fishS2Pro.rawValue)
+    }
+
     @Test func presetRoundTripPreservesReferenceData() throws {
         let preset = VoicePreset(
             name: "Kaden",

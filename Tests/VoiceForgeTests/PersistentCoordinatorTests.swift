@@ -108,6 +108,23 @@ actor ActorCounter {
 
 struct PersistentCoordinatorTests {
 
+    @Test func modelIsCarriedOnStartAndGenerateRequests() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("VF-model-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let capture = tmp.appendingPathComponent("requests.jsonl").path
+        let (registry, cleanup) = try makeFakeRegistry(capture: capture, lc: tmp.appendingPathComponent("launch-count").path)
+        defer { cleanup() }
+        let coordinator = registry.getOrCreate()
+        #expect(await coordinator.prewarmOnce(model: "drama-3"))
+        _ = try await coordinator.generate(id: "switch", text: "hello", referenceAudio: "/r.wav",
+            referenceText: "hello", output: tmp.appendingPathComponent("out.wav").path,
+            model: "fish-s2-pro")
+        let requests = try readCaptureLines(capture)
+        #expect(requests[0].contains(#""model":"drama-3""#))
+        #expect(requests[1].contains(#""model":"fish-s2-pro""#))
+    }
+
     @Test func oneProcessLoadsModelOnceAcrossTwoRequests() async throws {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("VF-once-\(UUID().uuidString)", isDirectory: true)

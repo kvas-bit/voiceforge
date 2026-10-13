@@ -1,104 +1,109 @@
 #!/usr/bin/env python3
-"""Persistent Fish S2 Pro generation server (JSON-lines protocol).
-
-Reads JSON requests from stdin, writes EVENT-prefixed JSON responses to stdout.
-Loads the model once and reuses it for all requests.
-
-Protocol (stdout):
-  EVENT:{"event":"starting","id":"..."}
-  EVENT:{"event":"loading_model","id":"..."}
-  EVENT:{"event":"ready","id":"..."}
-  EVENT:{"event":"generating","id":"..."}
-  EVENT:{"event":"writing","id":"..."}
-  EVENT:{"event":"done","id":"...","output":"/path/to.wav"}
-  EVENT:{"event":"error","id":"...","message":"..."}
-
-Protocol (stdin):
-  {"action":"start","id":"..."}
-  {"action":"generate","id":"...","text":"...","ref_audio":"...","ref_text":"...","output":"..."}
-
-Depends on mlx-speech >= 0.4.0.
-"""
-
+"""JSON-lines TTS helper for mlx-speech and Drama 3."""
+import contextlib
+import gc
+import io
 import json
 import sys
-import io
 from pathlib import Path
 
 
-def log_event(event_type, req_id, **kwargs):
-    """Emit a single EVENT line to stdout and flush immediately."""
-    payload = {"event": event_type, "id": req_id}
-    payload.update(kwargs)
-    sys.stdout.write("EVENT:" + json.dumps(payload, ensure_ascii=False) + "\n")
+def log_event(event, req_id, **fields):
+    sys.stdout.write("EVENT:" + json.dumps({"event": event, "id": req_id, **fields}, ensure_ascii=False) + "\n")
     sys.stdout.flush()
+
+
+def load_model(model_name, req_id):
+    global model, write_wav, loaded_model
+    if loaded_model == model_name:
+        return
+    if loaded_model is not None:
+        del model
+        model = None
+        gc.collect()
+        try:
+            import mlx.core as mx
+            mx.clear_cache()
+        except Exception:
+            pass
+    log_event("loading_model", req_id, model=model_name)
+    saved = sys.stdout
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            if model_name == "drama-3":
+                from drama3_mlx.server_adapter import load_model as drama_load
+                model = drama_load()
+                write_wav = None
+            else:
+                from mlx_speech.tts import load
+                from mlx_speech.audio import write_wav as mlx_write_wav
+                model = load(model_name)
+                write_wav = mlx_write_wav
+        loaded_model = model_name
+    except Exception as exc:
+        sys.stdout = saved
+        raise RuntimeError(f"Could not load {model_name}: {exc}") from exc
+    sys.stdout = saved
+    log_event("ready", req_id, model=model_name)
+
+
+model = None
+write_wav = None
+loaded_model = None
 
 
 def main():
     for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
         try:
             req = json.loads(line)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             log_event("error", "unknown", message="Invalid JSON request")
             continue
-
-        action = req.get("action", "")
-        req_id = req.get("id", "unknown")
-
+        action, req_id = req.get("action"), req.get("id", "unknown")
+        model_name = req.get("model", "fish-s2-pro")
         if action == "start":
-            # Explicit startup handshake — emit lifecycle events and signal ready.
             log_event("starting", req_id)
-
-            # Redirect library stdout while loading so noise doesn't corrupt protocol.
-            saved_stdout = sys.stdout
-            sys.stdout = io.StringIO()
             try:
-                from mlx_speech.tts import load
-                from mlx_speech.audio import write_wav
-            except ImportError as e:
-                sys.stdout = saved_stdout
-                log_event("error", req_id, message=f"import failed: {e}")
-                sys.exit(1)
-            sys.stdout = saved_stdout
-
-            log_event("loading_model", req_id)
-            try:
-                model = load("fish-s2-pro")
-            except Exception as e:
-                log_event("error", req_id, message=f"Model load failed: {e}")
-                sys.exit(1)
-            log_event("ready", req_id)
-            continue
-
-        if action == "generate":
-            text = req.get("text", "")
-            ref_audio = req.get("ref_audio", "")
-            ref_text = req.get("ref_text", "")
-            output = req.get("output", "")
-
-            if not text or not ref_audio or not ref_text or not output:
-                log_event("error", req_id, message="Missing required fields")
+                load_model(model_name, req_id)
+            except Exception as exc:
+                log_event("error", req_id, message=str(exc))
                 continue
-
-            # Acknowledge immediately so the caller knows the request was accepted.
-            log_event("accepted", req_id)
-
-            try:
-                log_event("generating", req_id)
-                kwargs = dict(text=text, reference_audio=ref_audio,
-                              reference_text=ref_text)
-                if req.get("max_new_tokens") is not None:
-                    kwargs["max_new_tokens"] = req["max_new_tokens"]
-                result = model.generate(**kwargs)
-                log_event("writing", req_id)
-                write_wav(Path(output), result.waveform,
-                          sample_rate=result.sample_rate)
-                log_event("done", req_id, output=output)
-            except Exception as e:
-                log_event("error", req_id, message=str(e))
+            continue
+        if action != "generate":
+            log_event("error", req_id, message="Unknown action")
+            continue
+        text, ref_audio, ref_text, output = (req.get(key, "") for key in ("text", "ref_audio", "ref_text", "output"))
+        if not all((text, ref_audio, ref_text, output)):
+            log_event("error", req_id, message="Missing required fields")
+            continue
+        try:
+            load_model(model_name, req_id)
+        except Exception as exc:
+            log_event("error", req_id, message=str(exc))
+            continue
+        log_event("accepted", req_id)
+        try:
+            log_event("generating", req_id)
+            with contextlib.redirect_stdout(io.StringIO()):
+                if model_name == "drama-3":
+                    kwargs = {"ref_audio": ref_audio, "ref_text": ref_text}
+                    if req.get("max_new_tokens") is not None:
+                        kwargs["max_new_tokens"] = req["max_new_tokens"]
+                    waveform, sample_rate = model.generate(text, **kwargs)
+                else:
+                    kwargs = dict(text=text, reference_audio=ref_audio, reference_text=ref_text)
+                    if req.get("max_new_tokens") is not None:
+                        kwargs["max_new_tokens"] = req["max_new_tokens"]
+                    result = model.generate(**kwargs)
+            log_event("writing", req_id)
+            if model_name == "drama-3":
+                import soundfile as sf
+                sf.write(output, waveform, sample_rate, subtype="PCM_16")
+            else:
+                write_wav(Path(output), result.waveform, sample_rate=result.sample_rate)
+            log_event("done", req_id, output=output)
+        except Exception as exc:
+            log_event("error", req_id, message=str(exc))
 
 
 if __name__ == "__main__":
