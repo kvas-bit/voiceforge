@@ -53,11 +53,17 @@ struct PromptTextEditor: NSViewRepresentable {
 
         if context.coordinator.lastInsertTrigger != insertTrigger {
             context.coordinator.lastInsertTrigger = insertTrigger
-            context.coordinator.insert(pendingInsertion)
+            let insertion = pendingInsertion
+            DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+                coordinator?.insert(insertion)
+            }
         }
         if context.coordinator.lastWrapTrigger != wrapTrigger {
             context.coordinator.lastWrapTrigger = wrapTrigger
-            context.coordinator.wrapSelection(with: wrapTag)
+            let tag = wrapTag
+            DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+                coordinator?.wrapSelection(with: tag)
+            }
         }
     }
 
@@ -87,7 +93,9 @@ struct PromptTextEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
-            text = textView.string
+            if text != textView.string {
+                text = textView.string
+            }
             applyTagHighlighting()
             refreshAutocomplete()
         }

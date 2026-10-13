@@ -283,6 +283,7 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue((editor.value as? String)?.contains("A real interaction test [") == true)
 
         let quickTag = app.buttons["quickTag-[whispers]"]
+        XCTAssertTrue(quickTag.waitForExistence(timeout: 10))
         XCTAssertTrue(quickTag.isHittable)
         quickTag.click()
         XCTAssertTrue((editor.value as? String)?.contains("[whispers]") == true)
@@ -293,6 +294,61 @@ final class VoiceForgeUITests: XCTestCase {
         tone.click()
         tone.typeText("warm narrator")
         XCTAssertEqual(tone.value as? String, "warm narrator")
+    }
+
+    func testDrama3ModelAndSamplingControls() {
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript.",
+            "VOICEFORGE_UITEST_SOURCE_TEXT": "Generate the selected number of Drama 3 takes."
+        ])
+        let settingsButton = app.buttons["settingsButton"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 10))
+        settingsButton.click()
+
+        let modelPicker = app.descendants(matching: .any)["ttsModelPicker"]
+        XCTAssertTrue(modelPicker.waitForExistence(timeout: 10))
+        modelPicker.click()
+        let s2Option = app.menuItems["Fish Audio S2 Pro"]
+        XCTAssertTrue(s2Option.waitForExistence(timeout: 5))
+        s2Option.click()
+        modelPicker.click()
+        let drama3Option = app.menuItems["Fish Audio Drama 3"]
+        XCTAssertTrue(drama3Option.waitForExistence(timeout: 5))
+        drama3Option.click()
+
+        let expressive = app.buttons["drama3ExpressivePresetButton"]
+        XCTAssertTrue(expressive.waitForExistence(timeout: 10))
+        expressive.click()
+        XCTAssertTrue(app.staticTexts["Temperature: 1.00"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Top-p: 0.90"].exists)
+        app.buttons["closeGenerationSettingsButton"].click()
+
+        let takesPicker = app.descendants(matching: .any)["generateTakeCountPicker"]
+        XCTAssertTrue(takesPicker.waitForExistence(timeout: 5))
+        takesPicker.click()
+        let threeTakes = app.menuItems["3 takes"]
+        XCTAssertTrue(threeTakes.waitForExistence(timeout: 5), "Take count picker: \(takesPicker.debugDescription)")
+        threeTakes.click()
+        XCTAssertTrue((takesPicker.value as? String)?.contains("3 takes") == true)
+
+        app.buttons["generateButton"].click()
+        XCTAssertTrue(app.buttons["selectTake-2"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["selectTake-0"].exists)
+        XCTAssertTrue(app.buttons["selectTake-1"].exists)
+    }
+
+    func testDrama3ConversationSceneModeToggle() {
+        let app = launchApp()
+        goToSidebar(app, "Conversations")
+
+        let sceneToggle = app.descendants(matching: .any)["conversationSceneModeToggle"]
+        XCTAssertTrue(sceneToggle.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["sceneDirectionField"].exists)
+        sceneToggle.click()
+        XCTAssertFalse(app.textFields["sceneDirectionField"].exists)
+        sceneToggle.click()
+        XCTAssertTrue(app.textFields["sceneDirectionField"].exists)
     }
 
     // MARK: - Helpers

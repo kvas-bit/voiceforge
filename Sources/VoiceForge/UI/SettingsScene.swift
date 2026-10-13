@@ -51,8 +51,9 @@ private struct GeneralSettingsView: View {
     }
 }
 
-private struct GenerationSettingsView: View {
+struct GenerationSettingsView: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Form {
@@ -60,6 +61,16 @@ private struct GenerationSettingsView: View {
             if viewModel.selectedTTSModel == TTSModel.drama3.rawValue { drama3SamplingSection }
         }
         .formStyle(.grouped)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(VoiceForgePrimaryButtonStyle())
+                    .accessibilityIdentifier("closeGenerationSettingsButton")
+            }
+            .padding(16)
+            .background(.bar)
+        }
     }
 
     private var modelSection: some View {
@@ -94,7 +105,9 @@ private struct GenerationSettingsView: View {
         Section("Drama 3 sampling") {
             HStack {
                 Button("Fish cloud default") { viewModel.setDrama3Preset(expressive: false) }
+                    .accessibilityIdentifier("drama3CloudPresetButton")
                 Button("Expressive (1.0/0.9/30)") { viewModel.setDrama3Preset(expressive: true) }
+                    .accessibilityIdentifier("drama3ExpressivePresetButton")
             }
             Text("Temperature: " + String(format: "%.2f", viewModel.drama3Temperature))
             Slider(value: $viewModel.drama3Temperature, in: 0...1, step: 0.05)

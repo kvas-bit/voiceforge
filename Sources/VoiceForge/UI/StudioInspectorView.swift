@@ -56,7 +56,7 @@ struct StudioInspectorView: View {
                 HStack {
                     Text("Engine")
                     Spacer()
-                    Text("Fish S2 Pro")
+                    Text(viewModel.selectedTTSModel == TTSModel.drama3.rawValue ? "Fish Audio Drama 3" : "Fish S2 Pro")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(VoiceForgeTheme.tertiaryText)
                 }

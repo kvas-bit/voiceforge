@@ -245,23 +245,6 @@ struct StudioView: View {
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)
             }
 
-            PromptTextEditor(
-                text: $viewModel.sourceText,
-                pendingInsertion: viewModel.quickInsertText,
-                insertTrigger: viewModel.insertTrigger,
-                wrapTag: viewModel.quickWrapTag,
-                wrapTrigger: viewModel.wrapTrigger
-            )
-            .frame(minHeight: 220)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(VoiceForgeTheme.field)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
-                    )
-            )
-
             VStack(alignment: .leading, spacing: 6) {
                 Text("Quick tags")
                     .font(.system(size: 11, weight: .semibold))
@@ -276,9 +259,7 @@ struct StudioView: View {
                                 .foregroundStyle(VoiceForgeTheme.tagText)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(
-                                    Capsule().fill(VoiceForgeTheme.tagBackground)
-                                )
+                                .background(Capsule().fill(VoiceForgeTheme.tagBackground))
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("quickTag-\(tag)")
@@ -298,6 +279,24 @@ struct StudioView: View {
                     }
                 }
             }
+
+            PromptTextEditor(
+                text: $viewModel.sourceText,
+                pendingInsertion: viewModel.quickInsertText,
+                insertTrigger: viewModel.insertTrigger,
+                wrapTag: viewModel.quickWrapTag,
+                wrapTrigger: viewModel.wrapTrigger
+            )
+            .frame(minHeight: 220)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(VoiceForgeTheme.field)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(VoiceForgeTheme.stroke, lineWidth: 1)
+                    )
+            )
+
         }
         .padding(18)
         .voiceForgePanel(fill: VoiceForgeTheme.panel)

@@ -6,6 +6,7 @@ import VoiceForgeCore
 struct RootView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var isShowingGenerationSettings = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -22,6 +23,11 @@ struct RootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .navigationTitle("VoiceForge")
+        .sheet(isPresented: $isShowingGenerationSettings) {
+            GenerationSettingsView()
+                .environmentObject(viewModel)
+                .frame(minWidth: 560, minHeight: 540)
+        }
         .onChange(of: viewModel.destination) { _, destination in
             // A destination's internal layout must never be allowed to trade away
             // the app-level navigation column. History is the widest destination,
@@ -39,7 +45,11 @@ struct RootView: View {
                 // SwiftUI dismisses an inspector as its destination disappears.
                 // That transient dismissal is not a user preference change.
                 guard viewModel.destination == .studio else { return }
-                viewModel.inspectorVisible = isPresented
+                DispatchQueue.main.async {
+                    guard viewModel.destination == .studio,
+                          viewModel.inspectorVisible != isPresented else { return }
+                    viewModel.inspectorVisible = isPresented
+                }
             }
         )
     }
@@ -61,6 +71,16 @@ struct RootView: View {
     @ToolbarContentBuilder
     private var studioToolbar: some ToolbarContent {
         if viewModel.destination == .studio {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    isShowingGenerationSettings = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                }
+                .help("Generation settings")
+                .accessibilityLabel("Generation settings")
+                .accessibilityIdentifier("settingsButton")
+            }
             ToolbarItem(placement: .primaryAction) {
                 if viewModel.isGenerating {
                     Button(role: .destructive) {
@@ -97,11 +117,22 @@ struct RootView: View {
 struct SidebarView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
+    private var destinationSelection: Binding<SidebarDestination> {
+        Binding(
+            get: { viewModel.destination },
+            set: { destination in
+                guard viewModel.destination != destination else { return }
+                DispatchQueue.main.async {
+                    viewModel.destination = destination
+                }
+            }
+        )
+    }
+
     var body: some View {
-        // Bind List(selection:) directly to the non-optional destination. Each row is a
-        // plain Label with a matching .tag — never a Button or .onTapGesture, because
-        // either of those would intercept the row's hit-test and prevent selection.
-        List(selection: $viewModel.destination) {
+        // Keep rows as plain labels with tags. Defer the selection write so the
+        // ObservableObject does not publish while SwiftUI is updating the List.
+        List(selection: destinationSelection) {
             Section("Workspace") {
                 ForEach(SidebarDestination.allCases) { destination in
                     Label(destination.label, systemImage: destination.systemImage)

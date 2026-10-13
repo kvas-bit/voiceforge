@@ -54,7 +54,6 @@ final class AppViewModel: ObservableObject {
     /// `previewingVoiceID` field works for both saved presets and the unbound clip.
     static let looseReferencePreviewID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     @Published var generationError = ""
-    @Published var lastFormattedPrompt = ""
     @Published var lastOutputURL: URL?
     /// When set (via `loadHistory`), the next completed generation is stamped
     /// as a new version of this history entry, then this is cleared.
@@ -217,7 +216,6 @@ final class AppViewModel: ObservableObject {
             print("[VoiceForge] history migration: relocated=\(migration.summary.relocated) dropped=\(migration.summary.dropped) unchanged=\(migration.summary.unchanged)")
         }
         sourceText = environment["VOICEFORGE_UITEST_SOURCE_TEXT"] ?? ""
-        lastFormattedPrompt = ""
         audioPlayer.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -234,15 +232,18 @@ final class AppViewModel: ObservableObject {
         conversationPlayer.$state
             .receive(on: RunLoop.main)
             .sink { [weak self] state in
-                self?.conversationPlaybackState = state
+                guard let self, self.conversationPlaybackState != state else { return }
+                self.conversationPlaybackState = state
             }
             .store(in: &cancellables)
-        refreshPreview()
-
         // Prewarm the persistent helper in the background.
         let svc = generationService
         Task { _ = await svc.prewarmPersistentHelper(model: selectedTTSModel) }
-        Task { self.loadedCheckpoint = await svc.persistentCheckpoint(model: selectedTTSModel) ?? "" }
+        Task {
+            let checkpoint = await svc.persistentCheckpoint(model: selectedTTSModel) ?? ""
+            guard self.loadedCheckpoint != checkpoint else { return }
+            self.loadedCheckpoint = checkpoint
+        }
 
         // Resume Ollama only if the user previously enabled it — starting
         // (or detecting) the server only happens when actually needed.
@@ -365,7 +366,6 @@ final class AppViewModel: ObservableObject {
         guard let suggestion = promptSuggestion else { return }
         sourceText = suggestion
         promptSuggestion = nil
-        refreshPreview()
     }
 
     func dismissPromptSuggestion() {
@@ -419,15 +419,10 @@ final class AppViewModel: ObservableObject {
         hasConversationLines && (conversationPlaybackState != .idle || conversationHasGeneratedAudio)
     }
 
-    func refreshPreview() {
-        lastFormattedPrompt = formattedPreview
-    }
-
     func persistReferenceFields() {
         defaults.set(referenceAudioPath, forKey: VoiceForgeStorageKeys.referenceAudioPath)
         defaults.set(referenceText, forKey: VoiceForgeStorageKeys.referenceText)
         defaults.set(emotionText, forKey: VoiceForgeStorageKeys.emotionText)
-        refreshPreview()
     }
 
     func insertQuickTag(_ tag: String) {
@@ -542,7 +537,6 @@ final class AppViewModel: ObservableObject {
         referenceText = item.referenceText
         generationError = ""
         persistReferenceFields()
-        lastFormattedPrompt = item.formattedPrompt
         lastOutputURL = URL(fileURLWithPath: item.outputPath)
         previewingVoiceID = nil
         currentPlayingHistoryID = nil
@@ -566,7 +560,6 @@ final class AppViewModel: ObservableObject {
         persistReferenceFields()
         generationError = ""
         cliOutput = ""
-        refreshPreview()
         isGenerating = true
         generationPhase = .prewarming
 
@@ -934,7 +927,6 @@ final class AppViewModel: ObservableObject {
         isGenerating = false
         generationPhase = .completed
         pendingGenerationID = nil
-        lastFormattedPrompt = result.formattedPrompt
         lastOutputURL = result.outputURL
         cliOutput = [result.standardOutput, result.standardError]
             .filter { !$0.isEmpty }

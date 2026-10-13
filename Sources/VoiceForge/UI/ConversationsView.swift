@@ -246,10 +246,12 @@ struct ConversationsView: View {
             if viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
                 Toggle("Generate as one scene", isOn: $viewModel.conversationSceneMode)
                     .toggleStyle(.switch)
+                    .accessibilityIdentifier("conversationSceneModeToggle")
                 if viewModel.conversationSceneMode {
                     TextField("Optional scene direction", text: $viewModel.sceneDirection, axis: .vertical)
                         .lineLimit(2...4)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("sceneDirectionField")
                     if !viewModel.conversationProgress.isEmpty {
                         HStack { ProgressView().controlSize(.small); Text(viewModel.conversationProgress) }
                             .font(.system(size: 11)).foregroundStyle(VoiceForgeTheme.secondaryText)

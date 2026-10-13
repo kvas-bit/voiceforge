@@ -115,16 +115,12 @@ struct HistoryView: View {
         if let id = selectedID, let item = viewModel.history.first(where: { $0.id == id }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top) {
-                            historyTitle(for: item)
-                            Spacer(minLength: 12)
-                            historyHeaderActions(for: item)
-                        }
-                        VStack(alignment: .leading, spacing: 12) {
-                            historyTitle(for: item)
-                            historyHeaderActions(for: item)
-                        }
+                    // Keep one actions subtree in the accessibility tree. Duplicating
+                    // these controls across ViewThatFits candidates left an off-layout
+                    // copy exposed but not hittable to VoiceOver/UI tests.
+                    VStack(alignment: .leading, spacing: 12) {
+                        historyTitle(for: item)
+                        historyHeaderActions(for: item)
                     }
 
                     if let sourceID = item.regeneratedFromID {

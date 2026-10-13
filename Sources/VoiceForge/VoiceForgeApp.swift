@@ -78,7 +78,7 @@ struct VoiceForgeApp: App {
     private var rootContent: some View {
         let base = RootView()
             .environmentObject(viewModel)
-            .frame(minWidth: 1100, minHeight: 720)
+            .frame(minHeight: 720)
         if #available(macOS 15.0, *) {
             base.containerBackground(.regularMaterial, for: .window)
         } else {
