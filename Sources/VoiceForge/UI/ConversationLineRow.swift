@@ -174,7 +174,7 @@ struct ConversationLineRow: View {
 
                     if matchedPreset == nil && !line.referenceAudioPath.isEmpty {
                         TextField(
-                            "Reference transcript",
+                            "Type exactly what is said in the clip (or Auto-transcribe)",
                             text: Binding(
                                 get: { line.referenceText },
                                 set: { updateLineReferenceText($0) }
@@ -188,6 +188,8 @@ struct ConversationLineRow: View {
                                 .fill(VoiceForgeTheme.field)
                         )
                         .accessibilityIdentifier("conversationReferenceTextField-\(index)")
+                        Text("An exact transcript improves voice cloning.")
+                            .font(.system(size: 10)).foregroundStyle(VoiceForgeTheme.tertiaryText)
                     }
                 }
 

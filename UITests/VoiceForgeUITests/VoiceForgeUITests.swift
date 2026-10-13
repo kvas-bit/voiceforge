@@ -223,6 +223,31 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(voiceCard.waitForExistence(timeout: 10))
     }
 
+    func testAutoTranscribeKeepsTypedTranscriptAndOffersSuggestion() {
+        let typed = "My carefully typed transcript."
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": typed
+        ])
+        goToSidebar(app, "Voices")
+        let newVoiceButton = app.buttons["newVoiceButton"]
+        XCTAssertTrue(newVoiceButton.waitForExistence(timeout: 10))
+        newVoiceButton.click()
+        XCTAssertTrue(app.textFields["presetNameField"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["autoTranscribeMainButton"].waitForExistence(timeout: 10))
+        app.buttons["autoTranscribeMainButton"].click()
+        let suggestion = app.staticTexts["mainTranscriptSuggestion"]
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["typedTranscriptShown-mainTranscriptSuggestion"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["transcriptMismatchWarning-mainTranscriptSuggestion"].exists)
+        app.buttons["keepTranscriptSuggestion-mainTranscriptSuggestion"].click()
+        XCTAssertFalse(suggestion.exists)
+        app.textFields["presetNameField"].click()
+        app.textFields["presetNameField"].typeText("Typed kept")
+        app.buttons["saveCurrentReferenceButton"].click()
+        XCTAssertTrue(app.staticTexts[typed].waitForExistence(timeout: 10))
+    }
+
     // MARK: - Sidebar navigation
 
     func testSidebarNavigationSwitchesDestinations() {

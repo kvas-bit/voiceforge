@@ -472,6 +472,25 @@ private struct SpeakerAssignmentCard: View {
                 }
             }
 
+            if viewModel.selectedTTSModel == TTSModel.drama3.rawValue, binding != nil {
+                Button("Auto-transcribe speaker reference") { viewModel.autoTranscribeSpeakerReference(speakerKey) }
+                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                    .accessibilityIdentifier("speakerAutoTranscribe-\(speakerKey)")
+                if let suggestion = viewModel.speakerTranscriptSuggestions[speakerKey] {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Whisper suggestion: \(suggestion.text)").font(.caption).accessibilityIdentifier("speakerTranscriptSuggestion-\(speakerKey)")
+                        if suggestion.materiallyDifferent {
+                            Text("Transcript differs (WER \(Int((suggestion.wordErrorRate ?? 0) * 100))%). Check the clip.")
+                                .font(.caption).foregroundStyle(VoiceForgeTheme.danger)
+                        }
+                        HStack {
+                            Button("Use this") { viewModel.useSpeakerTranscriptSuggestion(speakerKey) }
+                            Button("Keep mine") { viewModel.keepSpeakerTranscript(speakerKey) }
+                        }.font(.caption)
+                    }
+                }
+            }
+
             Text(binding == nil ? "Not assigned" : (matchedPreset?.name ?? "Custom voice"))
                 .font(.system(size: 11))
                 .foregroundStyle(binding == nil ? VoiceForgeTheme.danger : VoiceForgeTheme.tertiaryText)

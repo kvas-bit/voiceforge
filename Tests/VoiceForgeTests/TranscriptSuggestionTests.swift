@@ -1,0 +1,22 @@
+import Testing
+#if canImport(VoiceForgeCore)
+@testable import VoiceForgeCore
+#else
+@testable import VoiceForge
+#endif
+
+@Suite struct TranscriptSuggestionTests {
+    @Test func suggestionFillsEmptyTranscript() {
+        let suggestion = TranscriptSuggestion(text: "Whisper words", wordErrorRate: nil)
+        #expect(suggestion.transcriptValue(preserving: "") == "Whisper words")
+        #expect(suggestion.transcriptValue(preserving: "  \n") == "Whisper words")
+    }
+
+    @Test func suggestionPreservesTypedTranscriptAndReportsMismatch() {
+        let typed = "My exact, carefully typed words."
+        let suggestion = TranscriptSuggestion(text: "Whisper heard something else", wordErrorRate: 0.75)
+        #expect(suggestion.transcriptValue(preserving: typed) == typed)
+        #expect(suggestion.materiallyDifferent)
+        #expect(!TranscriptSuggestion(text: "nearby", wordErrorRate: 0.2).materiallyDifferent)
+    }
+}

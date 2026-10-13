@@ -299,7 +299,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
     public func transcribe(audio: String, language: String? = nil) async throws -> String {
         let id = UUID().uuidString
         let coordinator = coordinatorRegistry.getOrCreate()
-        guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue) else { throw PersistentError.notReady }
+        guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue, loadModel: false) else { throw PersistentError.notReady }
         let event = try await coordinator.send(PersistentRequest(action: "transcribe", id: id, model: TTSModel.drama3.rawValue, language: language, audio: audio), id: id)
         return event.text ?? ""
     }
@@ -307,11 +307,11 @@ public final class SpeechGenerationService: @unchecked Sendable {
     public func inspectReference(audio: String, text: String? = nil) async throws -> ReferenceInspection {
         let id = UUID().uuidString
         let coordinator = coordinatorRegistry.getOrCreate()
-        guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue) else { throw PersistentError.notReady }
+        guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue, loadModel: false) else { throw PersistentError.notReady }
         let event = try await coordinator.send(PersistentRequest(action: "inspect_reference", id: id, text: text, model: TTSModel.drama3.rawValue, audio: audio), id: id)
         return ReferenceInspection(duration: event.duration, sampleRate: event.sample_rate, channels: event.channels,
                                    peak: event.peak, clippingRatio: event.clipping_ratio,
-                                   silenceRatio: event.silence_ratio, lufs: event.lufs, warnings: event.warnings ?? [])
+                                   silenceRatio: event.silence_ratio, lufs: event.lufs, wordErrorRate: event.wer, warnings: event.warnings ?? [])
     }
 
     public func generateScene(

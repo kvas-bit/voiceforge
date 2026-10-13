@@ -95,6 +95,9 @@ final class AppViewModel: ObservableObject {
     @Published var additionalVoiceReferences: [VoiceReference] = []
     @Published var referenceDiagnostics: [String] = []
     @Published var referenceActionMessage = ""
+    @Published var mainTranscriptSuggestion: TranscriptSuggestion?
+    @Published var additionalTranscriptSuggestions: [UUID: TranscriptSuggestion] = [:]
+    @Published var speakerTranscriptSuggestions: [String: TranscriptSuggestion] = [:]
     @Published var generateTakeCount = 1
     @Published var takeOutputURLs: [URL] = []
     @Published var selectedTakeIndex = 0
@@ -513,18 +516,78 @@ final class AppViewModel: ObservableObject {
     func autoTranscribeReference(path: String, applyToMain: Bool = false, additionalIndex: Int? = nil) {
         Task {
             do {
-                let text = try await generationService.transcribe(audio: path)
+                let mock = ProcessInfo.processInfo.arguments.contains("--uitest-mock-generation")
+                let text = mock ? "Whisper suggested transcript." : try await generationService.transcribe(audio: path)
+                let typed = await MainActor.run { () -> String in
+                    if let additionalIndex, self.additionalVoiceReferences.indices.contains(additionalIndex) {
+                        return self.additionalVoiceReferences[additionalIndex].text
+                    }
+                    return applyToMain ? self.referenceText : ""
+                }
+                let info = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil : (mock
+                        ? ReferenceInspection(duration: 1, sampleRate: 44100, channels: 1, peak: nil, clippingRatio: nil, silenceRatio: nil, lufs: nil, wordErrorRate: 0.75, warnings: [])
+                        : try await generationService.inspectReference(audio: path, text: typed))
                 await MainActor.run {
                     if let additionalIndex, self.additionalVoiceReferences.indices.contains(additionalIndex) {
-                        self.additionalVoiceReferences[additionalIndex].text = text
-                    } else if applyToMain { self.referenceText = text }
-                    self.referenceActionMessage = "Transcript ready"
+                        let reference = self.additionalVoiceReferences[additionalIndex]
+                        let suggestion = TranscriptSuggestion(text: text, wordErrorRate: info?.wordErrorRate)
+                        if typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.additionalVoiceReferences[additionalIndex].text = suggestion.transcriptValue(preserving: typed)
+                            self.additionalTranscriptSuggestions.removeValue(forKey: reference.id)
+                        } else {
+                            self.additionalTranscriptSuggestions[reference.id] = suggestion
+                        }
+                    } else if applyToMain {
+                        let suggestion = TranscriptSuggestion(text: text, wordErrorRate: info?.wordErrorRate)
+                        if typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.referenceText = suggestion.transcriptValue(preserving: typed)
+                            self.mainTranscriptSuggestion = nil
+                        } else {
+                            self.mainTranscriptSuggestion = suggestion
+                        }
+                    }
+                    self.referenceActionMessage = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Transcript filled" : "Whisper suggestion ready"
                 }
             } catch {
                 await MainActor.run { self.referenceActionMessage = error.localizedDescription }
             }
         }
     }
+
+    func useMainTranscriptSuggestion() { if let suggestion = mainTranscriptSuggestion { referenceText = suggestion.text; mainTranscriptSuggestion = nil } }
+    func keepMainTranscript() { mainTranscriptSuggestion = nil }
+    func useAdditionalTranscriptSuggestion(id: UUID) {
+        guard let suggestion = additionalTranscriptSuggestions.removeValue(forKey: id),
+              let index = additionalVoiceReferences.firstIndex(where: { $0.id == id }) else { return }
+        additionalVoiceReferences[index].text = suggestion.text
+    }
+    func keepAdditionalTranscript(id: UUID) { additionalTranscriptSuggestions.removeValue(forKey: id) }
+
+    func autoTranscribeSpeakerReference(_ speakerKey: String) {
+        guard let binding = voiceBinding(forSpeakerKey: speakerKey) else { return }
+        Task {
+            do {
+                let text = try await generationService.transcribe(audio: binding.referenceAudioPath)
+                let typed = binding.referenceText
+                let info = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil : try await generationService.inspectReference(audio: binding.referenceAudioPath, text: typed)
+                await MainActor.run {
+                    if typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.assignReferenceToSpeaker(referenceAudioPath: binding.referenceAudioPath, referenceText: text, speakerKey: speakerKey)
+                        self.speakerTranscriptSuggestions.removeValue(forKey: speakerKey)
+                    } else {
+                        self.speakerTranscriptSuggestions[speakerKey] = TranscriptSuggestion(text: text, wordErrorRate: info?.wordErrorRate)
+                    }
+                }
+            } catch { await MainActor.run { self.referenceActionMessage = error.localizedDescription } }
+        }
+    }
+    func useSpeakerTranscriptSuggestion(_ speakerKey: String) {
+        guard let suggestion = speakerTranscriptSuggestions.removeValue(forKey: speakerKey), let binding = voiceBinding(forSpeakerKey: speakerKey) else { return }
+        assignReferenceToSpeaker(referenceAudioPath: binding.referenceAudioPath, referenceText: suggestion.text, speakerKey: speakerKey)
+    }
+    func keepSpeakerTranscript(_ speakerKey: String) { speakerTranscriptSuggestions.removeValue(forKey: speakerKey) }
 
     func deletePresets(at offsets: IndexSet) {
         presets.remove(atOffsets: offsets)

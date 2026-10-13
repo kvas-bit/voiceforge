@@ -73,14 +73,20 @@ def main():
         if action == "start":
             log_event("starting", req_id)
             try:
-                load_model(model_name, req_id)
+                if req.get("load_model", True):
+                    load_model(model_name, req_id)
+                else:
+                    log_event("ready", req_id, model=None)
             except Exception as exc:
                 log_event("error", req_id, message=str(exc))
                 continue
             continue
         if model_name == "drama-3" and action in {"generate", "generate_scene", "transcribe", "inspect_reference"}:
             try:
-                load_model(model_name, req_id)
+                # Diagnostics and ASR do not use the 35B TTS checkpoint. Keep
+                # the currently loaded generation model resident for these.
+                if action in {"generate", "generate_scene"}:
+                    load_model(model_name, req_id)
                 from drama3_mlx.server_adapter import handle
                 handle(req, lambda event: log_event(event.pop("event"), event.pop("id", req_id), **event))
             except Exception as exc:

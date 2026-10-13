@@ -72,12 +72,13 @@ class PersistentServerTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 out = Path(directory) / "out.wav"
                 requests = [
-                    {"action": "start", "id": "start", "model": "drama-3"},
+                    {"action": "start", "id": "start", "model": "drama-3", "load_model": False},
                     {"action": "generate", "id": "a", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "drama-3"},
                     {"action": "generate", "id": "b", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "fish-s2-pro"},
                     {"action": "generate_scene", "id": "c", "output": str(out), "line_outputs": [str(Path(directory) / "line.wav")], "model": "drama-3", "speakers": [], "lines": []},
-                    {"action": "transcribe", "id": "d", "audio": "ref.wav", "model": "drama-3"},
                     {"action": "generate", "id": "e", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "fish-s2-pro"},
+                    {"action": "transcribe", "id": "d", "audio": "ref.wav", "model": "drama-3"},
+                    {"action": "inspect_reference", "id": "f", "audio": "ref.wav", "text": "typed", "model": "drama-3"},
                 ]
                 server.model = server.write_wav = server.loaded_model = None
                 server.sys.stdin = io.StringIO("\n".join(json.dumps(x) for x in requests))
@@ -91,6 +92,11 @@ class PersistentServerTests(unittest.TestCase):
                 self.assertIn("drama-3", loads)
                 self.assertIn("fish-s2-pro", loads)
                 self.assertEqual(loads_by_event, loads)
+                self.assertFalse(any(event["event"] == "loading_model" and event["id"] in {"d", "f"} for event in events),
+                                 "transcribe/inspect must not load or evict the TTS model")
+                self.assertFalse(any(event["event"] == "loading_model" and event["id"] == "start" for event in events),
+                                 "diagnostic prewarm must start the helper without loading TTS")
+                self.assertEqual(server.loaded_model, "fish-s2-pro")
                 self.assertTrue(any(event["event"] == "progress" and event["id"] == "c" for event in events), events)
                 self.assertTrue(any(event["event"] == "done" and event.get("text") == "hello" for event in events), events)
                 self.assertTrue(out.is_file())

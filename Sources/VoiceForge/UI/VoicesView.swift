@@ -248,13 +248,19 @@ private struct NewVoiceSheet: View {
                 }
             }
 
-            VoiceForgeField(title: "Reference transcript", caption: nil) {
-                TextField("Transcript", text: $viewModel.referenceText, axis: .vertical)
+            VoiceForgeField(title: "Reference transcript", caption: "An exact transcript improves voice cloning.") {
+                TextField("Type exactly what is said in the clip (or Auto-transcribe)", text: $viewModel.referenceText, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(3...6)
+                    .accessibilityLabel("Reference transcript")
+                    .accessibilityIdentifier("referenceTranscriptField")
+                if let suggestion = viewModel.mainTranscriptSuggestion {
+                    transcriptSuggestion(suggestion, current: viewModel.referenceText, use: viewModel.useMainTranscriptSuggestion, keep: viewModel.keepMainTranscript, id: "mainTranscriptSuggestion")
+                }
                 HStack {
                     Button("Auto-transcribe") { viewModel.autoTranscribeReference(path: viewModel.referenceAudioPath, applyToMain: true) }
                         .disabled(viewModel.referenceAudioPath.isEmpty)
+                        .accessibilityIdentifier("autoTranscribeMainButton")
                     if !viewModel.referenceActionMessage.isEmpty { Text(viewModel.referenceActionMessage).font(.caption).foregroundStyle(VoiceForgeTheme.secondaryText) }
                 }
             }
@@ -264,7 +270,11 @@ private struct NewVoiceSheet: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(URL(fileURLWithPath: viewModel.additionalVoiceReferences[index].audioPath).lastPathComponent)
                             .font(.caption).lineLimit(1)
-                        TextField("Transcript", text: $viewModel.additionalVoiceReferences[index].text, axis: .vertical)
+                        TextField("Type exactly what is said in the clip (or Auto-transcribe)", text: $viewModel.additionalVoiceReferences[index].text, axis: .vertical)
+                            .accessibilityIdentifier("additionalTranscriptField-\(index)")
+                        if let suggestion = viewModel.additionalTranscriptSuggestions[viewModel.additionalVoiceReferences[index].id] {
+                            transcriptSuggestion(suggestion, current: viewModel.additionalVoiceReferences[index].text, use: { viewModel.useAdditionalTranscriptSuggestion(id: viewModel.additionalVoiceReferences[index].id) }, keep: { viewModel.keepAdditionalTranscript(id: viewModel.additionalVoiceReferences[index].id) }, id: "additionalTranscriptSuggestion-\(index)")
+                        }
                         HStack {
                             Button("Auto-transcribe") { viewModel.autoTranscribeReference(path: viewModel.additionalVoiceReferences[index].audioPath, additionalIndex: index) }
                             Button("Check clip") { viewModel.inspectReferenceClip(viewModel.additionalVoiceReferences[index]) }
@@ -297,5 +307,24 @@ private struct NewVoiceSheet: View {
             guard case .success(let urls) = result else { return }
             for url in urls { viewModel.addVoiceReference(path: url.path) }
         }
+    }
+
+    @ViewBuilder
+    private func transcriptSuggestion(_ suggestion: TranscriptSuggestion, current: String, use: @escaping () -> Void, keep: @escaping () -> Void, id: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Your transcript: \(current)").font(.caption).accessibilityIdentifier("typedTranscriptShown-\(id)")
+            Text("Whisper suggestion: \(suggestion.text)").font(.caption).accessibilityIdentifier(id)
+            if suggestion.materiallyDifferent {
+                Label("This differs from your transcript (WER \(Int((suggestion.wordErrorRate ?? 0) * 100))%). Check the audio before replacing it.", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(VoiceForgeTheme.danger)
+                    .accessibilityIdentifier("transcriptMismatchWarning-\(id)")
+            }
+            HStack {
+                Button("Use this", action: use).accessibilityIdentifier("useTranscriptSuggestion-\(id)")
+                Button("Keep mine", action: keep).accessibilityIdentifier("keepTranscriptSuggestion-\(id)")
+            }.font(.caption)
+        }
+        .padding(8)
+        .background(VoiceForgeTheme.fieldMuted, in: RoundedRectangle(cornerRadius: 8))
     }
 }

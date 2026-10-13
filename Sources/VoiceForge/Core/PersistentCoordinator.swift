@@ -25,6 +25,7 @@ struct PersistentRequest: Codable {
     let line_outputs: [String]?
     let language: String?
     let audio: String?
+    let load_model: Bool?
 
     init(action: String, id: String, text: String? = nil, ref_audio: String? = nil,
          ref_text: String? = nil, output: String? = nil, max_new_tokens: Int? = nil,
@@ -33,19 +34,20 @@ struct PersistentRequest: Codable {
          seed: Int? = nil, normalize: Bool? = nil, previous_takes: [PreviousTake]? = nil,
          save_codes: String? = nil, speakers: [PersistentSpeaker]? = nil,
          lines: [PersistentLine]? = nil, direction: String? = nil,
-         line_outputs: [String]? = nil, language: String? = nil, audio: String? = nil) {
+         line_outputs: [String]? = nil, language: String? = nil, audio: String? = nil, load_model: Bool? = nil) {
         self.action = action; self.id = id; self.text = text; self.ref_audio = ref_audio
         self.ref_text = ref_text; self.output = output; self.max_new_tokens = max_new_tokens
         self.model = model; self.references = references; self.temperature = temperature
         self.top_p = top_p; self.top_k = top_k; self.seed = seed; self.normalize = normalize
         self.previous_takes = previous_takes; self.save_codes = save_codes; self.speakers = speakers
         self.lines = lines; self.direction = direction; self.line_outputs = line_outputs; self.language = language; self.audio = audio
+        self.load_model = load_model
     }
 
     private enum CodingKeys: String, CodingKey {
         case action, id, text, ref_audio, ref_text, output, max_new_tokens, model, references
         case temperature, top_p, top_k, seed, normalize, previous_takes, save_codes, speakers, lines
-        case direction, line_outputs, language, audio
+        case direction, line_outputs, language, audio, load_model
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -62,6 +64,7 @@ struct PersistentRequest: Codable {
         try c.encodeIfPresent(speakers, forKey: .speakers); try c.encodeIfPresent(lines, forKey: .lines)
         try c.encodeIfPresent(direction, forKey: .direction); try c.encodeIfPresent(line_outputs, forKey: .line_outputs)
         try c.encodeIfPresent(language, forKey: .language); try c.encodeIfPresent(audio, forKey: .audio)
+        try c.encodeIfPresent(load_model, forKey: .load_model)
     }
 }
 struct PersistentReference: Codable { let audio: String; let text: String }
@@ -89,6 +92,7 @@ struct PersistentEvent: Codable {
     let clipping_ratio: Double?
     let silence_ratio: Double?
     let lufs: Double?
+    let wer: Double?
 }
 
 // MARK: - Shebang parser
@@ -152,7 +156,7 @@ actor PersistentGenerationCoordinator {
     // MARK: - Lifecycle
 
     /// Start the helper and warm the model once. Idempotent.
-    func prewarmOnce(model: String = TTSModel.default.rawValue) async -> Bool {
+    func prewarmOnce(model: String = TTSModel.default.rawValue, loadModel: Bool = true) async -> Bool {
         if isPrepared { return true }
         if preparing {
             // Another caller is already preparing — await its result.
@@ -168,7 +172,7 @@ actor PersistentGenerationCoordinator {
         guard await startHelper() else { return false }
         defer { if !isPrepared { shutdown() } }
         do {
-            let startReq = PersistentRequest(action: "start", id: "prewarm", model: model)
+            let startReq = PersistentRequest(action: "start", id: "prewarm", model: model, load_model: loadModel)
             try stdinHandle?.write(contentsOf: encodeLine(startReq))
             while let event = try await readNextEvent() {
                 if event.event == "ready" && event.id == "prewarm" { checkpoint = event.checkpoint; isPrepared = true; return true }

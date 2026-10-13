@@ -50,6 +50,16 @@ public struct VoiceReference: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public struct TranscriptSuggestion: Equatable, Sendable {
+    public let text: String
+    public let wordErrorRate: Double?
+    public var materiallyDifferent: Bool { (wordErrorRate ?? 0) > 0.3 }
+    public func transcriptValue(preserving current: String) -> String {
+        current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : current
+    }
+    public init(text: String, wordErrorRate: Double?) { self.text = text; self.wordErrorRate = wordErrorRate }
+}
+
 public struct Drama3Settings: Codable, Equatable, Sendable {
     public var temperature: Double
     public var topP: Double
@@ -72,11 +82,12 @@ public struct ReferenceInspection: Sendable {
     public let clippingRatio: Double?
     public let silenceRatio: Double?
     public let lufs: Double?
+    public let wordErrorRate: Double?
     public let warnings: [String]
-    public init(duration: Double?, sampleRate: Int?, channels: Int?, peak: Double?, clippingRatio: Double?, silenceRatio: Double?, lufs: Double?, warnings: [String]) {
+    public init(duration: Double?, sampleRate: Int?, channels: Int?, peak: Double?, clippingRatio: Double?, silenceRatio: Double?, lufs: Double?, wordErrorRate: Double? = nil, warnings: [String]) {
         self.duration = duration; self.sampleRate = sampleRate; self.channels = channels
         self.peak = peak; self.clippingRatio = clippingRatio; self.silenceRatio = silenceRatio
-        self.lufs = lufs; self.warnings = warnings
+        self.lufs = lufs; self.wordErrorRate = wordErrorRate; self.warnings = warnings
     }
 }
 
