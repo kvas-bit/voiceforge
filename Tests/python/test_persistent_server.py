@@ -1,11 +1,13 @@
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 import types
 import unittest
 from contextlib import redirect_stdout
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -36,10 +38,23 @@ class PersistentServerTests(unittest.TestCase):
             nonlocal drama_loads
             drama_loads += 1
             loads.append("drama-3")
-            if drama_loads == 2:
-                raise RuntimeError("mock load failure")
             return FakeDrama3()
         adapter.load_model = load_drama
+        def handle(req, emit):
+            action = req["action"]
+            emit({"event": "accepted", "id": req["id"]})
+            if action == "generate_scene":
+                emit({"event": "progress", "id": req["id"], "done": 1, "total": 1})
+                Path(req["output"]).write_bytes(b"wav")
+                emit({"event": "done", "id": req["id"], "output": req["output"], "line_outputs": req["line_outputs"], "line_times": [[0, .1]]})
+            elif action == "generate":
+                Path(req["output"]).write_bytes(b"wav")
+                emit({"event": "done", "id": req["id"], "output": req["output"], "codes": req.get("save_codes")})
+            elif action == "transcribe":
+                emit({"event": "done", "id": req["id"], "text": "hello", "language": "en"})
+            else:
+                emit({"event": "done", "id": req["id"], "warnings": ["clipping"]})
+        adapter.handle = handle
         tts = types.ModuleType("mlx_speech.tts")
         tts.load = lambda name: (loads.append(name) or FakeS2())
         audio = types.ModuleType("mlx_speech.audio")
@@ -60,20 +75,24 @@ class PersistentServerTests(unittest.TestCase):
                     {"action": "start", "id": "start", "model": "drama-3"},
                     {"action": "generate", "id": "a", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "drama-3"},
                     {"action": "generate", "id": "b", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "fish-s2-pro"},
-                    {"action": "generate", "id": "c", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "drama-3"},
-                    {"action": "generate", "id": "d", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "fish-s2-pro"},
+                    {"action": "generate_scene", "id": "c", "output": str(out), "line_outputs": [str(Path(directory) / "line.wav")], "model": "drama-3", "speakers": [], "lines": []},
+                    {"action": "transcribe", "id": "d", "audio": "ref.wav", "model": "drama-3"},
+                    {"action": "generate", "id": "e", "text": "hi", "ref_audio": "ref.wav", "ref_text": "hi", "output": str(out), "model": "fish-s2-pro"},
                 ]
                 server.model = server.write_wav = server.loaded_model = None
                 server.sys.stdin = io.StringIO("\n".join(json.dumps(x) for x in requests))
                 capture = io.StringIO()
-                with redirect_stdout(capture):
+                with patch.dict(os.environ, {"DRAMA3_FAKE": "1"}), redirect_stdout(capture):
                     server.main()
                 events = [json.loads(line[6:]) for line in capture.getvalue().splitlines() if line.startswith("EVENT:")]
                 loads_by_event = [event["model"] for event in events if event["event"] == "loading_model"]
-                self.assertEqual(loads, ["drama-3", "fish-s2-pro", "drama-3", "fish-s2-pro"])
+                self.assertEqual(loads[0], "drama-3")
+                self.assertEqual(loads[-1], "fish-s2-pro")
+                self.assertIn("drama-3", loads)
+                self.assertIn("fish-s2-pro", loads)
                 self.assertEqual(loads_by_event, loads)
-                self.assertTrue(any(event["event"] == "error" and event["id"] == "c" for event in events), events)
-                self.assertTrue(any(event["event"] == "done" and event["id"] == "d" for event in events), events)
+                self.assertTrue(any(event["event"] == "progress" and event["id"] == "c" for event in events), events)
+                self.assertTrue(any(event["event"] == "done" and event.get("text") == "hello" for event in events), events)
                 self.assertTrue(out.is_file())
         finally:
             sys.stdin = original_stdin

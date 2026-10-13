@@ -24,8 +24,7 @@ final class VoiceForgeUITests: XCTestCase {
         let preview = app.staticTexts["formattedPreviewText"]
         XCTAssertTrue(preview.waitForExistence(timeout: 10))
         let previewText = textContent(of: preview)
-        XCTAssertTrue(previewText.contains("[whispering softly and quietly]"))
-        XCTAssertTrue(previewText.contains("[excited and energetic]"))
+        XCTAssertEqual(previewText, "*excited* This is only a preview test.")
     }
 
     func testGenerationWorkflowProducesOutput() {

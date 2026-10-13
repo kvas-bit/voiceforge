@@ -20,6 +20,42 @@ struct AppViewModelTests {
         #expect(defaults.string(forKey: VoiceForgeStorageKeys.selectedTTSModel) == "fish-s2-pro")
     }
 
+    @Test func drama3SettingsPersistAcrossViewModels() throws {
+        let suite = "VoiceForge-drama-settings-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
+        let first = AppViewModel(defaults: defaults, historyStore: store)
+        #expect(first.drama3Temperature == 0.7)
+        #expect(first.drama3TopP == 0.7)
+        #expect(first.drama3TopK == 30)
+        #expect(first.drama3Normalize)
+        first.drama3Temperature = 0.9
+        first.drama3TopP = 0.85
+        first.drama3TopK = 24
+        first.drama3Seed = "1234"
+        first.drama3Normalize = false
+        first.drama3AutoTokenBudget = false
+        first.maxNewTokens = 2240
+        let restored = AppViewModel(defaults: defaults, historyStore: store)
+        #expect(restored.drama3Settings == Drama3Settings(temperature: 0.9, topP: 0.85, topK: 24, seed: 1234, normalize: false, maxNewTokens: 2240))
+    }
+
+    @Test func previewUsesSelectedModelFormatter() throws {
+        let suite = "VoiceForge-preview-model-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
+        viewModel.sourceText = "*soft* line\n[line]"
+        viewModel.emotionText = "Whisper"
+        #expect(viewModel.formattedPreview == "*soft* line\n[line]")
+        viewModel.selectedTTSModel = TTSModel.fishS2Pro.rawValue
+        #expect(viewModel.formattedPreview == "[whispering softly and quietly] [soft] line [line]")
+    }
+
     @Test func completedConversationCanEnterEditingPresentationWithoutChangingPlaybackData() {
         #expect(ConversationPresentation.isPlaybackMode(
             modelIsInPlaybackMode: true,

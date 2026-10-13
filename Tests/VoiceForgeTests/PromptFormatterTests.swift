@@ -7,11 +7,21 @@ import Testing
 #endif
 
 struct PromptFormatterTests {
-    @Test func drama3PreservesInlineDirectionsAndSpeakerTags() {
-        let output = PromptFormatter().format(text: "[laughs] hello [quietly, like a secret] <|speaker:3|>",
-            emotion: "whispers", model: TTSModel.drama3.rawValue)
-        #expect(output == "[whispers] [laughs] hello [quietly, like a secret] <|speaker:3|>")
+    @Test func drama3PreservesPromptVerbatim() {
+        let source = "  [laughs] hello [laughs]\n*whisper*\n<whisper>there</whisper> <|speaker:3|>  "
+        let output = PromptFormatter().format(text: source, emotion: "ignored", model: TTSModel.drama3.rawValue)
+        #expect(output == source)
         #expect(!output.contains("<|im_start|>"))
+    }
+
+    @Test func drama3KeepsRepeatedCuesAsterisksAndNewlines() {
+        let source = "[sighs] Wait.\n[sighs] *softly*\nAgain."
+        #expect(PromptFormatter().format(text: source, emotion: "", model: TTSModel.drama3.rawValue) == source)
+    }
+
+    @Test func s2FormattingRemainsUnchanged() {
+        #expect(PromptFormatter().format(text: "*Excited* Start now [excited] and then *laugh*", emotion: "") ==
+                "[excited and energetic] Start now and then [laughing lightly]")
     }
 
     @Test func prependsFreeformEmotionAndExpandsAliases() {

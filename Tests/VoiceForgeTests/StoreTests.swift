@@ -7,6 +7,21 @@ import Testing
 #endif
 
 struct StoreTests {
+    @Test func deletingDrama3HistoryAlsoRemovesCodesArtifact() throws {
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = HistoryStore(fileURL: dir.appendingPathComponent("history.json"))
+        let wav = dir.appendingPathComponent("take.wav")
+        let codes = dir.appendingPathComponent("take.npy")
+        try Data([1]).write(to: wav); try Data([2]).write(to: codes)
+        let item = GenerationHistoryItem(id: UUID(), createdAt: Date(), sourceText: "take", formattedPrompt: "take",
+            referenceAudioPath: "ref", referenceText: "ref", outputPath: wav.path, model: TTSModel.drama3.rawValue,
+            codesPath: codes.path, seed: 2)
+        _ = store.delete(item, from: [item])
+        #expect(!FileManager.default.fileExists(atPath: wav.path))
+        #expect(!FileManager.default.fileExists(atPath: codes.path))
+    }
+
     @Test func conversationModelRoundTripsAndLegacyManifestDefaultsToS2Pro() throws {
         let item = ConversationItem(lines: [], globalModel: TTSModel.drama3.rawValue)
         let decoded = try JSONDecoder().decode(ConversationItem.self, from: JSONEncoder().encode(item))

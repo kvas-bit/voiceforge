@@ -107,6 +107,22 @@ actor ActorCounter {
 // MARK: - Tests
 
 struct PersistentCoordinatorTests {
+    @Test func drama3SceneRequestEncodesContractFieldsAndAutoBudgetAsNull() throws {
+        let request = PersistentRequest(
+            action: "generate_scene", id: "scene-id", output: "/tmp/scene.wav", max_new_tokens: nil,
+            model: TTSModel.drama3.rawValue, temperature: 0.7, top_p: 0.7, top_k: 30,
+            normalize: true, save_codes: "/tmp/scene.npy",
+            speakers: [PersistentSpeaker(id: 0, name: "Ava", description: "Warm", references: [PersistentReference(audio: "/tmp/a.wav", text: "hello")])],
+            lines: [PersistentLine(speaker: 0, text: "[laughs] Hi")], direction: "At night",
+            line_outputs: ["/tmp/line.wav"])
+        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+        #expect(object["max_new_tokens"] is NSNull)
+        #expect(object["action"] as? String == "generate_scene")
+        #expect((object["speakers"] as? [[String: Any]])?.first?["references"] != nil)
+        #expect((object["lines"] as? [[String: Any]])?.first?["text"] as? String == "[laughs] Hi")
+        #expect(object["line_outputs"] != nil && object["save_codes"] as? String == "/tmp/scene.npy")
+    }
+
 
     @Test func modelIsCarriedOnStartAndGenerateRequests() async throws {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("VF-model-\(UUID().uuidString)", isDirectory: true)
@@ -191,7 +207,7 @@ struct PersistentCoordinatorTests {
         async let r2 = c.generate(id: "c2", text: "b", referenceAudio: "/r.wav", referenceText: "r", output: tmp.appendingPathComponent("c2.wav").path)
         async let r3 = c.generate(id: "c3", text: "c", referenceAudio: "/r.wav", referenceText: "r", output: tmp.appendingPathComponent("c3.wav").path)
         let (o1, o2, o3) = try await (r1, r2, r3)
-        #expect(o1.hasSuffix("c1.wav")); #expect(o2.hasSuffix("c2.wav")); #expect(o3.hasSuffix("c3.wav"))
+        #expect(o1.output?.hasSuffix("c1.wav") == true); #expect(o2.output?.hasSuffix("c2.wav") == true); #expect(o3.output?.hasSuffix("c3.wav") == true)
     }
 
     // MARK: - Cancellation (helper kill + partial removed + restart)
