@@ -226,6 +226,7 @@ private struct VoiceCard: View {
 private struct NewVoiceSheet: View {
     @EnvironmentObject private var viewModel: AppViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var isChoosingAdditional = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -251,6 +252,31 @@ private struct NewVoiceSheet: View {
                 TextField("Transcript", text: $viewModel.referenceText, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(3...6)
+                HStack {
+                    Button("Auto-transcribe") { viewModel.autoTranscribeReference(path: viewModel.referenceAudioPath, applyToMain: true) }
+                        .disabled(viewModel.referenceAudioPath.isEmpty)
+                    if !viewModel.referenceActionMessage.isEmpty { Text(viewModel.referenceActionMessage).font(.caption).foregroundStyle(VoiceForgeTheme.secondaryText) }
+                }
+            }
+
+            VoiceForgeField(title: "Additional references", caption: "Each clip keeps its own exact transcript.") {
+                ForEach(viewModel.additionalVoiceReferences.indices, id: \.self) { index in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(URL(fileURLWithPath: viewModel.additionalVoiceReferences[index].audioPath).lastPathComponent)
+                            .font(.caption).lineLimit(1)
+                        TextField("Transcript", text: $viewModel.additionalVoiceReferences[index].text, axis: .vertical)
+                        HStack {
+                            Button("Auto-transcribe") { viewModel.autoTranscribeReference(path: viewModel.additionalVoiceReferences[index].audioPath, additionalIndex: index) }
+                            Button("Check clip") { viewModel.inspectReferenceClip(viewModel.additionalVoiceReferences[index]) }
+                            Button("Remove", role: .destructive) { viewModel.additionalVoiceReferences.remove(at: index) }
+                        }.font(.caption)
+                    }
+                }
+                Button("Add reference clip…") { isChoosingAdditional = true }
+            }
+            if !viewModel.referenceDiagnostics.isEmpty {
+                Text(viewModel.referenceDiagnostics.joined(separator: "\n"))
+                    .font(.caption).foregroundStyle(VoiceForgeTheme.danger)
             }
 
             HStack {
@@ -267,5 +293,9 @@ private struct NewVoiceSheet: View {
             }
         }
         .padding(20)
+        .fileImporter(isPresented: $isChoosingAdditional, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            for url in urls { viewModel.addVoiceReference(path: url.path) }
+        }
     }
 }

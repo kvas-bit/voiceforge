@@ -248,7 +248,9 @@ struct StudioView: View {
             PromptTextEditor(
                 text: $viewModel.sourceText,
                 pendingInsertion: viewModel.quickInsertText,
-                insertTrigger: viewModel.insertTrigger
+                insertTrigger: viewModel.insertTrigger,
+                wrapTag: viewModel.quickWrapTag,
+                wrapTrigger: viewModel.wrapTrigger
             )
             .frame(minHeight: 220)
             .background(
@@ -280,6 +282,19 @@ struct StudioView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("quickTag-\(tag)")
+                    }
+                }
+                if viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
+                    Text("Select words, then wrap them")
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(VoiceForgeTheme.tertiaryText)
+                    FlowLayout(spacing: 6) {
+                        ForEach(["whisper", "emphasis", "soft", "fast", "slow", "stress", "forceful"], id: \.self) { tag in
+                            Button("<\(tag)>") { viewModel.wrapSelection(with: tag) }
+                                .buttonStyle(.plain).font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(VoiceForgeTheme.tagText).padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(Capsule().fill(VoiceForgeTheme.tagBackground))
+                                .accessibilityIdentifier("wrapTag-\(tag)")
+                        }
                     }
                 }
             }

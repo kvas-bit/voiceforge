@@ -56,29 +56,57 @@ private struct GenerationSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Model") {
-                Picker("Text to speech model", selection: Binding(
-                    get: { viewModel.selectedTTSModel },
-                    set: { viewModel.selectTTSModel($0) }
-                )) {
-                    ForEach(TTSModel.allCases) { model in
-                        Text(model.displayName).tag(model.rawValue)
-                    }
-                }
-                .accessibilityIdentifier("ttsModelPicker")
-                HStack {
-                    Text("Max new tokens")
-                    Spacer()
-                    Text("\(Int(viewModel.maxNewTokens))")
-                        .font(.system(size: 12, design: .monospaced))
-                }
-                Slider(value: $viewModel.maxNewTokens, in: 256...4096, step: 64)
-                Text("Drama 3 is the default model; Fish S2 Pro remains available here. A persistent Python helper loads the selected model and reuses it for renders, with a model-specific CLI fallback if the helper cannot start. Drama 3 requires an installed MLX checkpoint.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(VoiceForgeTheme.tertiaryText)
-            }
+            modelSection
+            if viewModel.selectedTTSModel == TTSModel.drama3.rawValue { drama3SamplingSection }
         }
         .formStyle(.grouped)
+    }
+
+    private var modelSection: some View {
+        Section("Model") {
+            modelPicker
+            if viewModel.selectedTTSModel != TTSModel.drama3.rawValue { tokenControls }
+            Text("Drama 3 is the default model; Fish S2 Pro remains available here.")
+                .font(.system(size: 11)).foregroundStyle(VoiceForgeTheme.tertiaryText)
+            checkpointLabel
+        }
+    }
+
+    private var modelPicker: some View {
+        Picker("Text to speech model", selection: Binding(get: { viewModel.selectedTTSModel }, set: { viewModel.selectTTSModel($0) })) {
+            Text("Fish Audio Drama 3").tag(TTSModel.drama3.rawValue)
+            Text("Fish Audio S2 Pro").tag(TTSModel.fishS2Pro.rawValue)
+        }.accessibilityIdentifier("ttsModelPicker")
+    }
+
+    private var tokenControls: some View {
+        VStack(alignment: .leading) {
+            Text("Max new tokens: \(Int(viewModel.maxNewTokens))")
+            Slider(value: $viewModel.maxNewTokens, in: 256...4096, step: 64)
+        }
+    }
+
+    private var checkpointLabel: some View {
+        Text("Loaded checkpoint: " + viewModel.loadedCheckpoint)
+    }
+
+    private var drama3SamplingSection: some View {
+        Section("Drama 3 sampling") {
+            HStack {
+                Button("Fish cloud default") { viewModel.setDrama3Preset(expressive: false) }
+                Button("Expressive (1.0/0.9/30)") { viewModel.setDrama3Preset(expressive: true) }
+            }
+            Text("Temperature: " + String(format: "%.2f", viewModel.drama3Temperature))
+            Slider(value: $viewModel.drama3Temperature, in: 0...1, step: 0.05)
+            Text("Top-p: " + String(format: "%.2f", viewModel.drama3TopP))
+            Slider(value: $viewModel.drama3TopP, in: 0...1, step: 0.05)
+            Stepper("Top-k: \(viewModel.drama3TopK)", value: $viewModel.drama3TopK, in: 1...100)
+            TextField("Seed (blank = random)", text: $viewModel.drama3Seed)
+                .accessibilityIdentifier("drama3SeedField")
+            Toggle("Normalize English and Chinese text", isOn: $viewModel.drama3Normalize)
+            Toggle("Token budget: Auto", isOn: $viewModel.drama3AutoTokenBudget)
+            if !viewModel.drama3AutoTokenBudget { Slider(value: $viewModel.maxNewTokens, in: 256...8192, step: 64) }
+        }
     }
 }
 

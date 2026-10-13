@@ -222,7 +222,7 @@ struct ConversationsView: View {
                     Text("Model")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(VoiceForgeTheme.tertiaryText)
-                    Text("Fish S2 Pro")
+                    Text(viewModel.selectedTTSModel == TTSModel.drama3.rawValue ? "Drama 3" : "Fish S2 Pro")
                         .font(.system(size: 13, weight: .medium))
                         .accessibilityIdentifier("conversationModelLabel")
                 }
@@ -243,6 +243,20 @@ struct ConversationsView: View {
                 }
             }
 
+            if viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
+                Toggle("Generate as one scene", isOn: $viewModel.conversationSceneMode)
+                    .toggleStyle(.switch)
+                if viewModel.conversationSceneMode {
+                    TextField("Optional scene direction", text: $viewModel.sceneDirection, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                    if !viewModel.conversationProgress.isEmpty {
+                        HStack { ProgressView().controlSize(.small); Text(viewModel.conversationProgress) }
+                            .font(.system(size: 11)).foregroundStyle(VoiceForgeTheme.secondaryText)
+                    }
+                }
+            }
+
             HStack(spacing: 12) {
                 Button {
                     viewModel.generateConversation()
@@ -251,13 +265,18 @@ struct ConversationsView: View {
                         if viewModel.conversationIsGenerating {
                             ProgressView().controlSize(.small)
                         }
-                        Text(viewModel.conversationIsGenerating ? "Generating…" : "Generate all lines")
+                        Text(viewModel.conversationIsGenerating ? "Generating…" : (viewModel.conversationSceneMode && viewModel.selectedTTSModel == TTSModel.drama3.rawValue ? "Generate scene" : "Generate all lines"))
                     }
                 }
                 .buttonStyle(VoiceForgePrimaryButtonStyle())
                 .disabled(viewModel.conversationIsGenerating || viewModel.conversationLines.isEmpty || !allLinesReady)
                 .accessibilityIdentifier("conversationGenerateButton")
                 .frame(minWidth: 220)
+
+                if viewModel.conversationSceneOutputPath != nil {
+                    Button("Play scene") { viewModel.playConversationScene() }
+                        .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                }
 
                 if viewModel.conversationIsGenerating {
                     Button(role: .destructive) {
@@ -283,8 +302,7 @@ struct ConversationsView: View {
     private var allLinesReady: Bool {
         viewModel.conversationLines.allSatisfy { line in
             !line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !line.referenceAudioPath.isEmpty &&
-            !line.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            (((!line.referenceAudioPath.isEmpty && !line.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || !line.additionalReferences.isEmpty) && line.additionalReferences.allSatisfy { !$0.audioPath.isEmpty && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         }
     }
 
@@ -398,6 +416,14 @@ private struct SpeakerAssignmentCard: View {
             Text(displayName)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(VoiceForgeTheme.primaryText)
+
+            if viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
+                TextField("Character description (optional)", text: Binding(
+                    get: { viewModel.characterDescription(for: speakerKey) },
+                    set: { viewModel.setCharacterDescription($0, speakerKey: speakerKey) }
+                ))
+                .textFieldStyle(.roundedBorder)
+            }
 
             Picker("", selection: Binding(
                 get: { selection },

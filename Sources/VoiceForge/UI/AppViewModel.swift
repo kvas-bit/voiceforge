@@ -65,6 +65,8 @@ final class AppViewModel: ObservableObject {
     @Published var presetName = ""
     @Published var quickInsertText = ""
     @Published var insertTrigger = 0
+    @Published var quickWrapTag = ""
+    @Published var wrapTrigger = 0
     @Published var cliOutput = ""
 
     // ElevenLabs-style voice settings. Persisted locally; advisory until a remote backend lands.
@@ -78,13 +80,26 @@ final class AppViewModel: ObservableObject {
     }
 
     // Generation controls shared by both Fish models.
-    @Published var maxNewTokens: Double = 1500
+    @Published var maxNewTokens: Double = 1500 { didSet { persistDrama3Settings() } }
 
     // Conversation editor state
     @Published var conversationLines: [ConversationLine] = []
     @Published var conversationName: String = ""
     @Published var conversationIsGenerating: Bool = false
     @Published var conversationPlaybackState: ConversationPlaybackState = .idle
+    @Published var conversationSceneMode = true
+    @Published var sceneDirection = ""
+    @Published var conversationProgress = ""
+    @Published var conversationSceneOutputPath: String?
+    @Published var conversationLineTimes: [[Double]]?
+    @Published var loadedCheckpoint = ""
+    @Published var additionalVoiceReferences: [VoiceReference] = []
+    @Published var referenceDiagnostics: [String] = []
+    @Published var referenceActionMessage = ""
+    @Published var generateTakeCount = 1
+    @Published var takeOutputURLs: [URL] = []
+    @Published var selectedTakeIndex = 0
+    private var pendingPreviousTakes: [PreviousTake] = []
 
     // Multi-voice script import state
     /// Paste buffer bound to the "Import script" text editor.
@@ -101,7 +116,7 @@ final class AppViewModel: ObservableObject {
     private var conversationModelUsed: String?
     private let scriptParser = ConversationScriptParser()
 
-    let quickTags = [
+    let s2QuickTags = [
         "[whispers]",
         "[laughs]",
         "[sighs]",
@@ -111,6 +126,14 @@ final class AppViewModel: ObservableObject {
         "[sarcastic]",
         "[announcer voice]"
     ]
+    let drama3QuickTags = ["[laughs]", "[sighs]", "[coughs]", "[gasp]", "[pause]", "[whispers]", "Free direction…"]
+    var quickTags: [String] { selectedTTSModel == TTSModel.drama3.rawValue ? drama3QuickTags : s2QuickTags }
+    @Published var drama3Temperature: Double { didSet { persistDrama3Settings() } }
+    @Published var drama3TopP: Double { didSet { persistDrama3Settings() } }
+    @Published var drama3TopK: Int { didSet { persistDrama3Settings() } }
+    @Published var drama3Seed = "" { didSet { persistDrama3Settings() } }
+    @Published var drama3Normalize: Bool { didSet { persistDrama3Settings() } }
+    @Published var drama3AutoTokenBudget: Bool { didSet { persistDrama3Settings() } }
 
     private let defaults: UserDefaults
     private let presetStore: VoicePresetStore
@@ -155,6 +178,15 @@ final class AppViewModel: ObservableObject {
         selectedOllamaModel = defaults.string(forKey: VoiceForgeStorageKeys.selectedOllamaModel) ?? ""
         selectedTTSModel = TTSModel(rawValue: defaults.string(forKey: VoiceForgeStorageKeys.selectedTTSModel) ?? "")?.rawValue
             ?? TTSModel.default.rawValue
+        let savedDramaSettings = defaults.data(forKey: VoiceForgeStorageKeys.drama3Settings)
+            .flatMap { try? JSONDecoder().decode(Drama3Settings.self, from: $0) } ?? Drama3Settings()
+        maxNewTokens = Double(savedDramaSettings.maxNewTokens ?? 1500)
+        drama3Temperature = savedDramaSettings.temperature
+        drama3TopP = savedDramaSettings.topP
+        drama3TopK = savedDramaSettings.topK
+        drama3Seed = savedDramaSettings.seed.map(String.init) ?? ""
+        drama3Normalize = savedDramaSettings.normalize
+        drama3AutoTokenBudget = savedDramaSettings.maxNewTokens == nil
         let environment = ProcessInfo.processInfo.environment
         referenceAudioPath = environment["VOICEFORGE_UITEST_REFERENCE_AUDIO"]
             ?? defaults.string(forKey: VoiceForgeStorageKeys.referenceAudioPath)
@@ -210,6 +242,7 @@ final class AppViewModel: ObservableObject {
         // Prewarm the persistent helper in the background.
         let svc = generationService
         Task { _ = await svc.prewarmPersistentHelper(model: selectedTTSModel) }
+        Task { self.loadedCheckpoint = await svc.persistentCheckpoint(model: selectedTTSModel) ?? "" }
 
         // Resume Ollama only if the user previously enabled it — starting
         // (or detecting) the server only happens when actually needed.
@@ -345,7 +378,27 @@ final class AppViewModel: ObservableObject {
     }
 
     var formattedPreview: String {
-        formatter.format(text: sourceText, emotion: emotionText)
+        formatter.format(text: sourceText, emotion: emotionText, model: selectedTTSModel)
+    }
+
+    var drama3Settings: Drama3Settings {
+        Drama3Settings(temperature: drama3Temperature, topP: drama3TopP, topK: drama3TopK,
+                       seed: Int(drama3Seed), normalize: drama3Normalize,
+                       maxNewTokens: drama3AutoTokenBudget ? nil : Int(maxNewTokens))
+    }
+    var canReviseDrama3: Bool { !pendingPreviousTakes.isEmpty }
+
+    private func persistDrama3Settings() {
+        let settings = Drama3Settings(temperature: drama3Temperature, topP: drama3TopP, topK: drama3TopK,
+                                      seed: Int(drama3Seed), normalize: drama3Normalize,
+                                      maxNewTokens: drama3AutoTokenBudget ? nil : Int(maxNewTokens))
+        if let data = try? JSONEncoder().encode(settings) { defaults.set(data, forKey: VoiceForgeStorageKeys.drama3Settings) }
+    }
+
+    func setDrama3Preset(expressive: Bool) {
+        drama3Temperature = expressive ? 1.0 : 0.7
+        drama3TopP = expressive ? 0.9 : 0.7
+        drama3TopK = 30
     }
 
     var outputLocationDescription: String {
@@ -378,9 +431,11 @@ final class AppViewModel: ObservableObject {
     }
 
     func insertQuickTag(_ tag: String) {
-        quickInsertText = tag
+        quickInsertText = tag == "Free direction…" ? "[describe the delivery] " : tag
         insertTrigger += 1
     }
+
+    func wrapSelection(with tag: String) { quickWrapTag = tag; wrapTrigger += 1 }
 
     func chooseReferenceAudio() {
         let panel = NSOpenPanel()
@@ -391,12 +446,37 @@ final class AppViewModel: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             referenceAudioPath = url.path
             persistReferenceFields()
+            inspectMainReference()
+        }
+    }
+
+    func inspectMainReference() {
+        guard !referenceAudioPath.isEmpty else { return }
+        Task {
+            do {
+                let info = try await generationService.inspectReference(audio: referenceAudioPath, text: referenceText)
+                await MainActor.run { self.referenceDiagnostics = info.warnings }
+            } catch {
+                await MainActor.run { self.referenceDiagnostics = [error.localizedDescription] }
+            }
+        }
+    }
+
+    func inspectReferenceClip(_ clip: VoiceReference) {
+        Task {
+            do {
+                let info = try await generationService.inspectReference(audio: clip.audioPath, text: clip.text)
+                await MainActor.run { self.referenceDiagnostics = info.warnings }
+            } catch {
+                await MainActor.run { self.referenceDiagnostics = [error.localizedDescription] }
+            }
         }
     }
 
     func applyPreset(_ preset: VoicePreset) {
         referenceAudioPath = preset.referenceAudioPath
         referenceText = preset.referenceText
+        additionalVoiceReferences = preset.additionalReferences
         persistReferenceFields()
     }
 
@@ -409,12 +489,46 @@ final class AppViewModel: ObservableObject {
         let preset = VoicePreset(
             name: trimmedName,
             referenceAudioPath: referenceAudioPath,
-            referenceText: referenceText
+            referenceText: referenceText,
+            additionalReferences: additionalVoiceReferences
         )
 
         presets.insert(preset, at: 0)
         presetStore.save(presets)
         presetName = ""
+        additionalVoiceReferences = []
+    }
+
+    func addVoiceReference(path: String) {
+        Task {
+            do {
+                let info = try await generationService.inspectReference(audio: path)
+                await MainActor.run {
+                    let warnings = info.warnings
+                    self.referenceDiagnostics = warnings
+                    self.additionalVoiceReferences.append(VoiceReference(audioPath: path, text: ""))
+                    self.referenceActionMessage = warnings.isEmpty ? "Reference looks good" : warnings.joined(separator: " · ")
+                }
+            } catch {
+                await MainActor.run { self.referenceActionMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    func autoTranscribeReference(path: String, applyToMain: Bool = false, additionalIndex: Int? = nil) {
+        Task {
+            do {
+                let text = try await generationService.transcribe(audio: path)
+                await MainActor.run {
+                    if let additionalIndex, self.additionalVoiceReferences.indices.contains(additionalIndex) {
+                        self.additionalVoiceReferences[additionalIndex].text = text
+                    } else if applyToMain { self.referenceText = text }
+                    self.referenceActionMessage = "Transcript ready"
+                }
+            } catch {
+                await MainActor.run { self.referenceActionMessage = error.localizedDescription }
+            }
+        }
     }
 
     func deletePresets(at offsets: IndexSet) {
@@ -436,6 +550,7 @@ final class AppViewModel: ObservableObject {
         // original is never mutated or deleted — generate() always inserts a
         // fresh history item; this just carries the breadcrumb back to it.
         regeneratingFromID = item.id
+        pendingPreviousTakes = item.codesPath.map { [PreviousTake(text: item.sourceText, codesPath: $0)] } ?? []
         // Do NOT auto-play; the user can hit the dock or row play button.
         audioPlayer.stop()
     }
@@ -444,6 +559,7 @@ final class AppViewModel: ObservableObject {
     /// starts an unrelated, standalone entry instead.
     func clearRegenerationSource() {
         regeneratingFromID = nil
+        pendingPreviousTakes = []
     }
 
     func generate() {
@@ -454,31 +570,46 @@ final class AppViewModel: ObservableObject {
         isGenerating = true
         generationPhase = .prewarming
 
-        let requestID = UUID()
-        pendingGenerationID = requestID
-
-        let request = GenerationRequest(
-            id: requestID,
-            sourceText: sourceText,
-            emotionText: emotionText,
-            referenceAudioPath: referenceAudioPath,
-            referenceText: referenceText,
-            model: selectedTTSModel,
-            maxNewTokens: Int(maxNewTokens)
-        )
+        takeOutputURLs = []
+        selectedTakeIndex = 0
+        let count = selectedTTSModel == TTSModel.drama3.rawValue ? min(4, max(1, generateTakeCount)) : 1
+        let baseSettings = drama3Settings
+        let priorTakes = pendingPreviousTakes
+        let takeSeedBase = baseSettings.seed ?? Int.random(in: 1...Int.max - count)
+        let text = sourceText, tone = emotionText, refPath = referenceAudioPath, refText = referenceText
+        let refs = [VoiceReference(audioPath: referenceAudioPath, text: referenceText)] + additionalVoiceReferences
+        let model = selectedTTSModel
+        let autoBudget = drama3AutoTokenBudget
+        let manualBudget = Int(maxNewTokens)
         let service = generationService
 
         generationTask?.cancel()
         generationTask = Task { [weak self] in
             do {
-                await MainActor.run { self?.generationPhase = .generating }
-                let result = try await service.generate(request: request)
-                if Task.isCancelled { return }
-                await MainActor.run { self?.generationPhase = .validating }
-                // Service already validates WAV internally; no separate step needed.
-                await MainActor.run {
-                    self?.completeGeneration(result, id: requestID, model: request.model)
+                for index in 0..<count {
+                    if Task.isCancelled { return }
+                    let seed = takeSeedBase
+                    let settings = Drama3Settings(temperature: baseSettings.temperature, topP: baseSettings.topP,
+                        topK: baseSettings.topK, seed: seed &+ index, normalize: baseSettings.normalize,
+                        maxNewTokens: baseSettings.maxNewTokens)
+                    let requestID = UUID()
+                    let request = GenerationRequest(id: requestID, sourceText: text, emotionText: tone,
+                        referenceAudioPath: refPath, referenceText: refText, model: model,
+                        maxNewTokens: model == TTSModel.drama3.rawValue && autoBudget ? nil : manualBudget,
+                        references: refs, drama3Settings: settings, previousTakes: priorTakes)
+                    await MainActor.run { self?.pendingGenerationID = requestID; self?.generationPhase = .generating }
+                    let result = try await service.generate(request: request)
+                    if Task.isCancelled { return }
+                    await MainActor.run {
+                        self?.takeOutputURLs.append(result.outputURL)
+                        self?.completeGeneration(result, id: requestID, model: model, seed: settings.seed)
+                        if index + 1 < count {
+                            self?.isGenerating = true
+                            self?.generationPhase = .generating
+                        }
+                    }
                 }
+                await MainActor.run { self?.regeneratingFromID = nil; self?.pendingPreviousTakes = [] }
             } catch is CancellationError {
                 await MainActor.run {
                     self?.isGenerating = false
@@ -496,6 +627,12 @@ final class AppViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func selectTake(at index: Int) {
+        guard takeOutputURLs.indices.contains(index) else { return }
+        selectedTakeIndex = index; lastOutputURL = takeOutputURLs[index]
+        try? audioPlayer.play(url: takeOutputURLs[index])
     }
 
     /// Returns true while `voiceID` is the actively previewing voice and the player is running.
@@ -793,7 +930,7 @@ final class AppViewModel: ObservableObject {
         persistReferenceFields()
     }
 
-    private func completeGeneration(_ result: GenerationResult, id: UUID, model: String) {
+    private func completeGeneration(_ result: GenerationResult, id: UUID, model: String, seed: Int? = nil) {
         isGenerating = false
         generationPhase = .completed
         pendingGenerationID = nil
@@ -813,14 +950,15 @@ final class AppViewModel: ObservableObject {
             referenceText: referenceText,
             outputPath: result.outputURL.path,
             regeneratedFromID: regeneratingFromID,
-            model: model
+            model: model,
+            codesPath: result.codesURL?.path,
+            seed: seed
         )
 
         history.insert(historyItem, at: 0)
         historyStore.save(history)
         previewingVoiceID = nil
         currentPlayingHistoryID = nil
-        regeneratingFromID = nil
         try? audioPlayer.load(url: result.outputURL)
     }
 
@@ -854,6 +992,7 @@ final class AppViewModel: ObservableObject {
         guard index >= 0, index < conversationLines.count else { return }
         conversationLines[index].referenceAudioPath = preset.referenceAudioPath
         conversationLines[index].referenceText = preset.referenceText
+        conversationLines[index].additionalReferences = preset.additionalReferences
     }
 
     // MARK: - Multi-voice script import
@@ -879,6 +1018,7 @@ final class AppViewModel: ObservableObject {
         for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
             conversationLines[i].referenceAudioPath = preset.referenceAudioPath
             conversationLines[i].referenceText = preset.referenceText
+            conversationLines[i].additionalReferences = preset.additionalReferences
         }
     }
 
@@ -888,7 +1028,18 @@ final class AppViewModel: ObservableObject {
         for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
             conversationLines[i].referenceAudioPath = referenceAudioPath
             conversationLines[i].referenceText = referenceText
+            conversationLines[i].additionalReferences = []
         }
+    }
+
+    func setCharacterDescription(_ value: String, speakerKey: String) {
+        for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
+            conversationLines[i].characterDescription = value
+        }
+    }
+
+    func characterDescription(for speakerKey: String) -> String {
+        conversationLines.first(where: { $0.speakerKey == speakerKey })?.characterDescription ?? ""
     }
 
     /// The voice currently bound to `speakerKey`, read from its first matching
@@ -906,7 +1057,10 @@ final class AppViewModel: ObservableObject {
         conversationSpeakerKeys.allSatisfy { key in
             conversationLines
                 .filter { $0.speakerKey == key }
-                .allSatisfy { !$0.referenceAudioPath.isEmpty && !$0.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .allSatisfy { line in
+                    let primaryReady = !line.referenceAudioPath.isEmpty && !line.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    return (primaryReady || !line.additionalReferences.isEmpty) && line.additionalReferences.allSatisfy { !$0.audioPath.isEmpty && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                }
         }
     }
 
@@ -920,6 +1074,7 @@ final class AppViewModel: ObservableObject {
         guard index >= 0, index < conversationLines.count else { return }
         conversationLines[index].referenceAudioPath = ""
         conversationLines[index].referenceText = ""
+        conversationLines[index].additionalReferences = []
     }
 
     func generateConversation() {
@@ -927,9 +1082,8 @@ final class AppViewModel: ObservableObject {
 
         // Validate all lines
         for line in conversationLines {
-            if line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-               line.referenceAudioPath.isEmpty ||
-               line.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let hasReference = ((!line.referenceAudioPath.isEmpty && !line.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || !line.additionalReferences.isEmpty) && line.additionalReferences.allSatisfy { !$0.audioPath.isEmpty && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            if line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !hasReference {
                 generationError = "All lines must have script text and a complete voice setup."
                 return
             }
@@ -938,6 +1092,9 @@ final class AppViewModel: ObservableObject {
         generationError = ""
         conversationIsGenerating = true
         conversationPlayer.stop()
+        conversationSceneOutputPath = nil
+        conversationLineTimes = nil
+        conversationProgress = ""
 
         // Reset all statuses
         for i in 0..<conversationLines.count {
@@ -949,8 +1106,55 @@ final class AppViewModel: ObservableObject {
         let model = selectedTTSModel
         conversationModelUsed = model
         conversationGenerationTask = Task { [weak self] in
-            await self?.generateConversationLines(model: model)
+            if model == TTSModel.drama3.rawValue && self?.conversationSceneMode == true {
+                await self?.generateConversationScene()
+            } else {
+                await self?.generateConversationLines(model: model)
+            }
         }
+    }
+
+    private func generateConversationScene() async {
+        let keys = conversationSpeakerKeys.isEmpty ? ["speaker-0"] : conversationSpeakerKeys
+        let keyIDs = Dictionary(uniqueKeysWithValues: keys.enumerated().map { ($1, $0) })
+        let speakers = keys.enumerated().compactMap { id, key -> SceneSpeaker? in
+            guard let line = conversationLines.first(where: { ($0.speakerKey ?? keys[0]) == key }) else { return nil }
+            var refs = line.additionalReferences
+            if !line.referenceAudioPath.isEmpty, !refs.contains(where: { $0.audioPath == line.referenceAudioPath }) {
+                refs.insert(VoiceReference(audioPath: line.referenceAudioPath, text: line.referenceText), at: 0)
+            }
+            return SceneSpeaker(id: id, name: conversationSpeakerDisplayNames[key] ?? key,
+                               description: line.characterDescription, references: refs)
+        }
+        let lines = conversationLines.map { SceneLine(speaker: keyIDs[$0.speakerKey ?? keys[0]] ?? 0, text: $0.text) }
+        conversationProgress = "Preparing scene…"
+        do {
+            let result = try await generationService.generateScene(speakers: speakers, lines: lines,
+                direction: sceneDirection, settings: drama3Settings) { [weak self] done, total in
+                    Task { @MainActor in self?.conversationProgress = "Rendering scene · \(done)/\(total)" }
+                }
+            guard !Task.isCancelled else { return }
+            for i in conversationLines.indices {
+                conversationLines[i].outputPath = result.lineOutputURLs.indices.contains(i) ? result.lineOutputURLs[i].path : nil
+                conversationLines[i].status = conversationLines[i].outputPath == nil ? .failed : .completed
+            }
+            conversationSceneOutputPath = result.outputURL.path
+            conversationLineTimes = result.lineTimes
+            conversationProgress = "Scene ready"
+            conversationIsGenerating = false
+            saveConversationToHistory()
+            playConversationScene()
+        } catch {
+            conversationIsGenerating = false
+            conversationProgress = ""
+            generationError = error.localizedDescription
+            for i in conversationLines.indices { conversationLines[i].status = .failed }
+        }
+    }
+
+    func playConversationScene() {
+        guard let path = conversationSceneOutputPath else { return }
+        try? audioPlayer.play(url: URL(fileURLWithPath: path))
     }
 
     private func generateConversationLines(model: String) async {
@@ -1026,6 +1230,8 @@ final class AppViewModel: ObservableObject {
         conversationScriptDraft = ""
         conversationSpeakerKeys = []
         conversationSpeakerDisplayNames = [:]
+        conversationSceneOutputPath = nil
+        conversationLineTimes = nil
         conversationScriptIssues = []
         conversationPlayer.stop()
     }
@@ -1054,7 +1260,10 @@ final class AppViewModel: ObservableObject {
             lines: linesCopy,
             globalModel: conversationModelUsed ?? selectedTTSModel,
             globalMaxNewTokens: Int(maxNewTokens),
-            globalEditType: "none"
+            globalEditType: "none",
+            sceneDirection: sceneDirection,
+            sceneOutputPath: conversationSceneOutputPath,
+            lineTimes: conversationLineTimes
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -1076,7 +1285,8 @@ final class AppViewModel: ObservableObject {
             outputPath: conversationDir.appendingPathComponent("conversation.json").path,
             type: .conversation,
             conversationLines: linesCopy,
-            model: conversationModelUsed ?? selectedTTSModel
+            model: conversationModelUsed ?? selectedTTSModel,
+            codesPath: conversationSceneOutputPath.map { URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("scene.npy").path }
         )
 
         history.insert(historyItem, at: 0)
@@ -1092,6 +1302,8 @@ final class AppViewModel: ObservableObject {
         conversationPlayer.stop()
         conversationLines = conversation.lines
         conversationName = conversation.name
+        conversationSceneOutputPath = conversation.sceneOutputPath
+        conversationLineTimes = conversation.lineTimes
         maxNewTokens = Double(conversation.globalMaxNewTokens)
         destination = .conversations
     }
@@ -1131,7 +1343,10 @@ final class AppViewModel: ObservableObject {
                     lines: lines,
                     globalModel: manifest.globalModel,
                     globalMaxNewTokens: manifest.globalMaxNewTokens,
-                    globalEditType: manifest.globalEditType
+                    globalEditType: manifest.globalEditType,
+                    sceneDirection: manifest.sceneDirection,
+                    sceneOutputPath: manifest.sceneOutputPath,
+                    lineTimes: manifest.lineTimes
                 )
             }
 
@@ -1140,7 +1355,8 @@ final class AppViewModel: ObservableObject {
                 lines: lines,
                 globalModel: TTSModel.fishS2Pro.rawValue,
                 globalMaxNewTokens: Int(maxNewTokens),
-                globalEditType: "none"
+                globalEditType: "none",
+                sceneOutputPath: item.codesPath.map { URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("scene.wav").path }
             )
         }
 
@@ -1152,7 +1368,10 @@ final class AppViewModel: ObservableObject {
             lines: manifest.lines,
             globalModel: manifest.globalModel,
             globalMaxNewTokens: manifest.globalMaxNewTokens,
-            globalEditType: manifest.globalEditType
+            globalEditType: manifest.globalEditType,
+            sceneDirection: manifest.sceneDirection,
+            sceneOutputPath: manifest.sceneOutputPath,
+            lineTimes: manifest.lineTimes
         )
     }
 

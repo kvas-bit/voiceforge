@@ -10,6 +10,8 @@ struct PromptTextEditor: NSViewRepresentable {
     @Binding var text: String
     let pendingInsertion: String
     let insertTrigger: Int
+    var wrapTag: String = ""
+    var wrapTrigger: Int = 0
     var accessibilityIdentifier: String = "sourceTextEditor"
 
     func makeCoordinator() -> Coordinator {
@@ -53,6 +55,10 @@ struct PromptTextEditor: NSViewRepresentable {
             context.coordinator.lastInsertTrigger = insertTrigger
             context.coordinator.insert(pendingInsertion)
         }
+        if context.coordinator.lastWrapTrigger != wrapTrigger {
+            context.coordinator.lastWrapTrigger = wrapTrigger
+            context.coordinator.wrapSelection(with: wrapTag)
+        }
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
@@ -63,6 +69,7 @@ struct PromptTextEditor: NSViewRepresentable {
         @Binding var text: String
         weak var textView: NSTextView?
         var lastInsertTrigger = 0
+        var lastWrapTrigger = 0
         private var autocompleteController: TagAutocompleteController?
 
         private var autocomplete: TagAutocompleteController {
@@ -125,6 +132,20 @@ struct PromptTextEditor: NSViewRepresentable {
             textView.insertText(token, replacementRange: selectedRange)
             text = textView.string
             applyTagHighlighting()
+        }
+
+        @MainActor
+        func wrapSelection(with tag: String) {
+            guard !tag.isEmpty, let textView else { return }
+            let range = textView.selectedRange()
+            guard range.length > 0, range.location + range.length <= (textView.string as NSString).length else { return }
+            let selected = (textView.string as NSString).substring(with: range)
+            let replacement = "<\(tag)>\(selected)</\(tag)>"
+            if textView.shouldChangeText(in: range, replacementString: replacement) {
+                textView.textStorage?.replaceCharacters(in: range, with: replacement)
+                textView.didChangeText(); textView.setSelectedRange(NSRange(location: range.location, length: (replacement as NSString).length))
+                text = textView.string; applyTagHighlighting()
+            }
         }
 
         @MainActor

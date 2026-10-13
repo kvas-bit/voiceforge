@@ -72,6 +72,12 @@ struct StudioInspectorView: View {
             }
 
             Section("Generation") {
+                if viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
+                    Picker("Generate takes", selection: $viewModel.generateTakeCount) {
+                        ForEach(1...4, id: \.self) { count in Text("\(count) take\(count == 1 ? "" : "s")").tag(count) }
+                    }
+                    .accessibilityIdentifier("generateTakeCountPicker")
+                }
                 HStack {
                     Text("Max tokens")
                     Spacer()
@@ -101,12 +107,29 @@ struct StudioInspectorView: View {
                     Button {
                         viewModel.generate()
                     } label: {
-                        Text("Generate")
+                        Text(viewModel.canReviseDrama3 ? "Revise" : "Generate")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(VoiceForgePrimaryButtonStyle())
                     .disabled(viewModel.sourceText.isEmpty || viewModel.referenceAudioPath.isEmpty || viewModel.referenceText.isEmpty)
                     .accessibilityIdentifier("inspectorGenerateButton")
+                }
+            }
+
+            if viewModel.takeOutputURLs.count > 1 {
+                Section("Compare takes") {
+                    HStack(spacing: 8) {
+                        ForEach(Array(viewModel.takeOutputURLs.enumerated()), id: \.offset) { index, url in
+                            Button {
+                                viewModel.selectTake(at: index)
+                            } label: {
+                                Label("Take \(index + 1)", systemImage: viewModel.selectedTakeIndex == index ? "checkmark.circle.fill" : "play.circle")
+                            }
+                            .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                            .help(url.lastPathComponent)
+                            .accessibilityIdentifier("selectTake-\(index)")
+                        }
+                    }
                 }
             }
 
