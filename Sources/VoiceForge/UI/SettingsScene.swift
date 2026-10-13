@@ -57,7 +57,15 @@ private struct GenerationSettingsView: View {
     var body: some View {
         Form {
             Section("Model") {
-                LabeledContent("Engine", value: "Fish Audio S2 Pro (persistent)")
+                Picker("Text to speech model", selection: Binding(
+                    get: { viewModel.selectedTTSModel },
+                    set: { viewModel.selectTTSModel($0) }
+                )) {
+                    ForEach(TTSModel.allCases) { model in
+                        Text(model.displayName).tag(model.rawValue)
+                    }
+                }
+                .accessibilityIdentifier("ttsModelPicker")
                 HStack {
                     Text("Max new tokens")
                     Spacer()
@@ -65,7 +73,7 @@ private struct GenerationSettingsView: View {
                         .font(.system(size: 12, design: .monospaced))
                 }
                 Slider(value: $viewModel.maxNewTokens, in: 256...4096, step: 64)
-                Text("VoiceForge uses a persistent Python helper that loads the Fish S2 Pro model once and reuses it for all renders. A direct CLI fallback runs only if the helper cannot start.")
+                Text("Drama 3 is the default model; Fish S2 Pro remains available here. A persistent Python helper loads the selected model and reuses it for renders, with a model-specific CLI fallback if the helper cannot start. Drama 3 requires an installed MLX checkpoint.")
                     .font(.system(size: 11))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)
             }

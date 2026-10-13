@@ -7,18 +7,19 @@ public struct PromptFormatter: Sendable {
         self.aliasMap = aliasMap
     }
 
-    public func format(text: String, emotion: String) -> String {
+    public func format(text: String, emotion: String, model: String = TTSModel.fishS2Pro.rawValue) -> String {
+        let preserveTags = model == TTSModel.drama3.rawValue
         let normalizedText = normalizeAsteriskTags(in: text)
         var seen = Set<String>()
         var fragments: [String] = []
 
-        let trimmedEmotion = normalizeTag(emotion)
+        let trimmedEmotion = normalizeTag(emotion, preserve: preserveTags)
         if !trimmedEmotion.isEmpty {
             fragments.append("[\(trimmedEmotion)]")
             seen.insert(trimmedEmotion)
         }
 
-        fragments.append(rebuildInlineTags(in: normalizedText, seen: &seen))
+        fragments.append(rebuildInlineTags(in: normalizedText, seen: &seen, preserve: preserveTags))
         return cleanSpacing(in: fragments.joined(separator: " "))
     }
 
@@ -37,7 +38,7 @@ public struct PromptFormatter: Sendable {
         )
     }
 
-    private func rebuildInlineTags(in text: String, seen: inout Set<String>) -> String {
+    private func rebuildInlineTags(in text: String, seen: inout Set<String>, preserve: Bool) -> String {
         let pattern = #"\[([^\]]+)\]"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return text
@@ -59,7 +60,7 @@ public struct PromptFormatter: Sendable {
 
             rebuilt += String(text[cursor..<fullRange.lowerBound])
 
-            let normalized = normalizeTag(String(text[tagRange]))
+            let normalized = normalizeTag(String(text[tagRange]), preserve: preserve)
             if !normalized.isEmpty && !seen.contains(normalized) {
                 rebuilt += "[\(normalized)]"
                 seen.insert(normalized)
@@ -72,12 +73,13 @@ public struct PromptFormatter: Sendable {
         return rebuilt
     }
 
-    private func normalizeTag(_ raw: String) -> String {
+    private func normalizeTag(_ raw: String, preserve: Bool) -> String {
         let compact = TagCatalog.normalizeTagContent(raw)
 
         if compact.isEmpty {
             return ""
         }
+        if preserve { return compact }
 
         if let alias = aliasMap[compact] {
             return alias

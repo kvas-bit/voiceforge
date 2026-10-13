@@ -1,6 +1,6 @@
 # VoiceForge
 
-VoiceForge is a native macOS SwiftUI app that wraps `mlx-speech` for Fish Audio S2 Pro voice cloning with prompt formatting, inline emotion tags, history, presets, and WAV playback.
+VoiceForge is a native macOS SwiftUI app for Fish Audio Drama 3 voice cloning, with Fish Audio S2 Pro still selectable in Settings. It includes prompt formatting, inline direction tags, history, presets, and WAV playback.
 
 ## Requirements
 
@@ -10,12 +10,17 @@ VoiceForge is a native macOS SwiftUI app that wraps `mlx-speech` for Fish Audio 
 
 ## First-time setup
 
-The default model (`fish-s2-pro`) is downloaded automatically from Hugging Face the first time you generate speech. No manual download is needed — just run the app and start generating.
-
-If you want to download the model ahead of time, run:
+Drama 3 is the default. It uses the MLX checkpoint selected by the orchestrator at `~/Library/Application Support/VoiceForge/models/drama-3`, or by `VOICEFORGE_DRAMA3_MODEL_DIR`. Install the Drama 3 package into mlx-speech's Python environment:
 
 ```bash
-mlx-speech tts --model fish-s2-pro --text "Hello" -o /tmp/test.wav
+pipx inject mlx-speech -e ~/Projects/drama3
+pipx runpip mlx-speech install -U 'mlx>=0.32.3' 'mlx-lm>=0.32'
+```
+
+Fish S2 Pro remains selectable in Settings and continues to load through mlx-speech. To download/warm it ahead of time:
+
+```bash
+mlx-speech tts --model fish-s2-pro --text "Hello there." -o /tmp/test.wav
 ```
 
 To see all available models:
@@ -24,11 +29,7 @@ To see all available models:
 mlx-speech tts --list-models
 ```
 
-VoiceForge supports these models out of the box:
-- `fish-s2-pro` (default)
-- `moss-tts`
-- `step-audio-tts`
-- `kokoro-multilingual`
+VoiceForge supports `drama-3` (default) and `fish-s2-pro`.
 
 You can switch models in the app's settings.
 

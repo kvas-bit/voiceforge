@@ -7,6 +7,13 @@ import Testing
 #endif
 
 struct PromptFormatterTests {
+    @Test func drama3PreservesInlineDirectionsAndSpeakerTags() {
+        let output = PromptFormatter().format(text: "[laughs] hello [quietly, like a secret] <|speaker:3|>",
+            emotion: "whispers", model: TTSModel.drama3.rawValue)
+        #expect(output == "[whispers] [laughs] hello [quietly, like a secret] <|speaker:3|>")
+        #expect(!output.contains("<|im_start|>"))
+    }
+
     @Test func prependsFreeformEmotionAndExpandsAliases() {
         let formatter = PromptFormatter()
 

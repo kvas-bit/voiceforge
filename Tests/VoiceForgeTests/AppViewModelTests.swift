@@ -7,6 +7,19 @@ import Testing
 
 @MainActor
 struct AppViewModelTests {
+    @Test func ttsModelDefaultsToDrama3AndPersistsSelection() throws {
+        let suite = "VoiceForge-model-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
+        let viewModel = AppViewModel(defaults: defaults, historyStore: store)
+        #expect(TTSModel.default == .drama3)
+        #expect(viewModel.selectedTTSModel == "drama-3")
+        viewModel.selectedTTSModel = TTSModel.fishS2Pro.rawValue
+        #expect(defaults.string(forKey: VoiceForgeStorageKeys.selectedTTSModel) == "fish-s2-pro")
+    }
+
     @Test func completedConversationCanEnterEditingPresentationWithoutChangingPlaybackData() {
         #expect(ConversationPresentation.isPlaybackMode(
             modelIsInPlaybackMode: true,

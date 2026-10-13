@@ -73,8 +73,11 @@ final class AppViewModel: ObservableObject {
     @Published var styleExaggeration: Double = 0.0
     @Published var speakerBoost: Bool = true
 
-    // Backend knobs — Fish S2 Pro is the only model. Max tokens and text input
-    // flow through to mlx-speech; edit-type is not used by Fish.
+    @Published var selectedTTSModel: String {
+        didSet { defaults.set(selectedTTSModel, forKey: VoiceForgeStorageKeys.selectedTTSModel) }
+    }
+
+    // Generation controls shared by both Fish models.
     @Published var maxNewTokens: Double = 1500
 
     // Conversation editor state
@@ -95,6 +98,7 @@ final class AppViewModel: ObservableObject {
 
     let conversationPlayer: ConversationPlayer
     private var conversationGenerationTask: Task<Void, Never>?
+    private var conversationModelUsed: String?
     private let scriptParser = ConversationScriptParser()
 
     let quickTags = [
@@ -149,6 +153,8 @@ final class AppViewModel: ObservableObject {
         self.ollamaCoordinator = ollamaCoordinator
         ollamaEnabled = defaults.bool(forKey: VoiceForgeStorageKeys.ollamaEnabled)
         selectedOllamaModel = defaults.string(forKey: VoiceForgeStorageKeys.selectedOllamaModel) ?? ""
+        selectedTTSModel = TTSModel(rawValue: defaults.string(forKey: VoiceForgeStorageKeys.selectedTTSModel) ?? "")?.rawValue
+            ?? TTSModel.default.rawValue
         let environment = ProcessInfo.processInfo.environment
         referenceAudioPath = environment["VOICEFORGE_UITEST_REFERENCE_AUDIO"]
             ?? defaults.string(forKey: VoiceForgeStorageKeys.referenceAudioPath)
@@ -203,7 +209,7 @@ final class AppViewModel: ObservableObject {
 
         // Prewarm the persistent helper in the background.
         let svc = generationService
-        Task { _ = await svc.prewarmPersistentHelper() }
+        Task { _ = await svc.prewarmPersistentHelper(model: selectedTTSModel) }
 
         // Resume Ollama only if the user previously enabled it — starting
         // (or detecting) the server only happens when actually needed.
@@ -261,6 +267,16 @@ final class AppViewModel: ObservableObject {
     func selectOllamaModel(_ name: String) {
         selectedOllamaModel = name
         defaults.set(name, forKey: VoiceForgeStorageKeys.selectedOllamaModel)
+    }
+
+    func selectTTSModel(_ model: String) {
+        guard TTSModel(rawValue: model) != nil, selectedTTSModel != model else { return }
+        selectedTTSModel = model
+        let service = generationService
+        Task {
+            await service.shutdownPersistentHelper()
+            _ = await service.prewarmPersistentHelper(model: model)
+        }
     }
 
     /// Asks the selected model to suggest a more expressive, Fish-compatible
@@ -447,7 +463,7 @@ final class AppViewModel: ObservableObject {
             emotionText: emotionText,
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
-            model: "fish-s2-pro",
+            model: selectedTTSModel,
             maxNewTokens: Int(maxNewTokens)
         )
         let service = generationService
@@ -461,7 +477,7 @@ final class AppViewModel: ObservableObject {
                 await MainActor.run { self?.generationPhase = .validating }
                 // Service already validates WAV internally; no separate step needed.
                 await MainActor.run {
-                    self?.completeGeneration(result, id: requestID)
+                    self?.completeGeneration(result, id: requestID, model: request.model)
                 }
             } catch is CancellationError {
                 await MainActor.run {
@@ -777,7 +793,7 @@ final class AppViewModel: ObservableObject {
         persistReferenceFields()
     }
 
-    private func completeGeneration(_ result: GenerationResult, id: UUID) {
+    private func completeGeneration(_ result: GenerationResult, id: UUID, model: String) {
         isGenerating = false
         generationPhase = .completed
         pendingGenerationID = nil
@@ -796,7 +812,8 @@ final class AppViewModel: ObservableObject {
             referenceAudioPath: referenceAudioPath,
             referenceText: referenceText,
             outputPath: result.outputURL.path,
-            regeneratedFromID: regeneratingFromID
+            regeneratedFromID: regeneratingFromID,
+            model: model
         )
 
         history.insert(historyItem, at: 0)
@@ -929,12 +946,14 @@ final class AppViewModel: ObservableObject {
         }
 
         conversationGenerationTask?.cancel()
+        let model = selectedTTSModel
+        conversationModelUsed = model
         conversationGenerationTask = Task { [weak self] in
-            await self?.generateConversationLines()
+            await self?.generateConversationLines(model: model)
         }
     }
 
-    private func generateConversationLines() async {
+    private func generateConversationLines(model: String) async {
         let service = generationService
 
         for i in 0..<conversationLines.count {
@@ -958,6 +977,7 @@ final class AppViewModel: ObservableObject {
                 emotionText: "",
                 referenceAudioPath: line.referenceAudioPath,
                 referenceText: line.referenceText,
+                model: model,
                 maxNewTokens: Int(maxNewTokens)
             )
 
@@ -1032,7 +1052,7 @@ final class AppViewModel: ObservableObject {
             createdAt: Date(),
             name: name,
             lines: linesCopy,
-            globalModel: "fish-s2-pro",
+            globalModel: conversationModelUsed ?? selectedTTSModel,
             globalMaxNewTokens: Int(maxNewTokens),
             globalEditType: "none"
         )
@@ -1055,7 +1075,8 @@ final class AppViewModel: ObservableObject {
             referenceText: linesCopy.first?.referenceText ?? "",
             outputPath: conversationDir.appendingPathComponent("conversation.json").path,
             type: .conversation,
-            conversationLines: linesCopy
+            conversationLines: linesCopy,
+            model: conversationModelUsed ?? selectedTTSModel
         )
 
         history.insert(historyItem, at: 0)
@@ -1117,7 +1138,7 @@ final class AppViewModel: ObservableObject {
             return ConversationItem(
                 name: item.name,
                 lines: lines,
-                globalModel: "fish-s2-pro",
+                globalModel: TTSModel.fishS2Pro.rawValue,
                 globalMaxNewTokens: Int(maxNewTokens),
                 globalEditType: "none"
             )
