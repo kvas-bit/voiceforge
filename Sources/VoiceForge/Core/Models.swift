@@ -14,17 +14,69 @@ public struct VoicePreset: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public var referenceAudioPath: String
     public var referenceText: String
+    public var additionalReferences: [VoiceReference]
 
     public init(
         id: UUID = UUID(),
         name: String,
         referenceAudioPath: String,
-        referenceText: String
+        referenceText: String,
+        additionalReferences: [VoiceReference] = []
     ) {
         self.id = id
         self.name = name
         self.referenceAudioPath = referenceAudioPath
         self.referenceText = referenceText
+        self.additionalReferences = additionalReferences
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, referenceAudioPath, referenceText, additionalReferences }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        referenceAudioPath = try c.decode(String.self, forKey: .referenceAudioPath)
+        referenceText = try c.decode(String.self, forKey: .referenceText)
+        additionalReferences = try c.decodeIfPresent([VoiceReference].self, forKey: .additionalReferences) ?? []
+    }
+}
+
+public struct VoiceReference: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var audioPath: String
+    public var text: String
+    public init(id: UUID = UUID(), audioPath: String, text: String) {
+        self.id = id; self.audioPath = audioPath; self.text = text
+    }
+}
+
+public struct Drama3Settings: Codable, Equatable, Sendable {
+    public var temperature: Double
+    public var topP: Double
+    public var topK: Int
+    public var seed: Int?
+    public var normalize: Bool
+    public var maxNewTokens: Int?
+    public init(temperature: Double = 0.7, topP: Double = 0.7, topK: Int = 30,
+                seed: Int? = nil, normalize: Bool = true, maxNewTokens: Int? = nil) {
+        self.temperature = temperature; self.topP = topP; self.topK = topK
+        self.seed = seed; self.normalize = normalize; self.maxNewTokens = maxNewTokens
+    }
+}
+
+public struct ReferenceInspection: Sendable {
+    public let duration: Double?
+    public let sampleRate: Int?
+    public let channels: Int?
+    public let peak: Double?
+    public let clippingRatio: Double?
+    public let silenceRatio: Double?
+    public let lufs: Double?
+    public let warnings: [String]
+    public init(duration: Double?, sampleRate: Int?, channels: Int?, peak: Double?, clippingRatio: Double?, silenceRatio: Double?, lufs: Double?, warnings: [String]) {
+        self.duration = duration; self.sampleRate = sampleRate; self.channels = channels
+        self.peak = peak; self.clippingRatio = clippingRatio; self.silenceRatio = silenceRatio
+        self.lufs = lufs; self.warnings = warnings
     }
 }
 
@@ -51,6 +103,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
     /// breadcrumb linking the new version back to its source.
     public let regeneratedFromID: UUID?
     public let model: String?
+    public let codesPath: String?
+    public let seed: Int?
 
     public init(
         id: UUID,
@@ -64,7 +118,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         type: HistoryItemType = .single,
         conversationLines: [ConversationLine]? = nil,
         regeneratedFromID: UUID? = nil,
-        model: String? = nil
+        model: String? = nil, codesPath: String? = nil, seed: Int? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -78,6 +132,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.conversationLines = conversationLines
         self.regeneratedFromID = regeneratedFromID
         self.model = model
+        self.codesPath = codesPath; self.seed = seed
     }
 
     /// Returns a copy with a new `outputPath`. Used by the history migration
@@ -96,7 +151,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
             type: type,
             conversationLines: conversationLines,
             regeneratedFromID: regeneratedFromID,
-            model: model
+            model: model, codesPath: codesPath, seed: seed
         )
     }
 
@@ -114,7 +169,7 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
 
     // Codable migration: pre-existing history JSON has no `name` field, so default to autoName.
     private enum CodingKeys: String, CodingKey {
-        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath, type, conversationLines, regeneratedFromID, model
+        case id, createdAt, name, sourceText, formattedPrompt, referenceAudioPath, referenceText, outputPath, type, conversationLines, regeneratedFromID, model, codesPath, seed
     }
 
     public init(from decoder: Decoder) throws {
@@ -132,6 +187,8 @@ public struct GenerationHistoryItem: Codable, Equatable, Identifiable, Sendable 
         self.conversationLines = try c.decodeIfPresent([ConversationLine].self, forKey: .conversationLines)
         self.regeneratedFromID = try c.decodeIfPresent(UUID.self, forKey: .regeneratedFromID)
         self.model = try c.decodeIfPresent(String.self, forKey: .model)
+        self.codesPath = try c.decodeIfPresent(String.self, forKey: .codesPath)
+        self.seed = try c.decodeIfPresent(Int.self, forKey: .seed)
     }
 }
 
@@ -145,6 +202,10 @@ public struct GenerationRequest: Sendable {
     public let maxNewTokens: Int?
     public let editType: String?
     public let editInfo: String?
+    public let references: [VoiceReference]
+    public let drama3Settings: Drama3Settings
+    public let previousTakes: [PreviousTake]
+    public let saveCodesPath: String?
 
     public init(
         id: UUID = UUID(),
@@ -155,7 +216,9 @@ public struct GenerationRequest: Sendable {
         model: String = TTSModel.default.rawValue,
         maxNewTokens: Int? = nil,
         editType: String? = nil,
-        editInfo: String? = nil
+        editInfo: String? = nil,
+        references: [VoiceReference] = [], drama3Settings: Drama3Settings = Drama3Settings(),
+        previousTakes: [PreviousTake] = [], saveCodesPath: String? = nil
     ) {
         self.id = id
         self.sourceText = sourceText
@@ -166,7 +229,18 @@ public struct GenerationRequest: Sendable {
         self.maxNewTokens = maxNewTokens
         self.editType = editType
         self.editInfo = editInfo
+        self.references = references
+        self.drama3Settings = drama3Settings
+        self.previousTakes = previousTakes
+        self.saveCodesPath = saveCodesPath
     }
+}
+
+public struct PreviousTake: Codable, Equatable, Sendable {
+    public var text: String
+    public var codesPath: String
+    public init(text: String, codesPath: String) { self.text = text; self.codesPath = codesPath }
+    private enum CodingKeys: String, CodingKey { case text; case codesPath = "codes" }
 }
 
 public extension TTSModel {
@@ -178,11 +252,16 @@ public struct GenerationResult: Sendable {
     public let outputURL: URL
     public let standardOutput: String
     public let standardError: String
+    public let codesURL: URL?
+    public let duration: Double?
+    public let sampleRate: Int?
 
-    public init(formattedPrompt: String, outputURL: URL, standardOutput: String, standardError: String) {
+    public init(formattedPrompt: String, outputURL: URL, standardOutput: String, standardError: String,
+                codesURL: URL? = nil, duration: Double? = nil, sampleRate: Int? = nil) {
         self.formattedPrompt = formattedPrompt
         self.outputURL = outputURL
         self.standardOutput = standardOutput
         self.standardError = standardError
+        self.codesURL = codesURL; self.duration = duration; self.sampleRate = sampleRate
     }
 }

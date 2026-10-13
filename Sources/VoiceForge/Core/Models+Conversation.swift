@@ -11,6 +11,29 @@ public struct SpeakerVoiceBinding: Equatable, Sendable, Codable {
     }
 }
 
+public struct SceneSpeaker: Sendable {
+    public var id: Int
+    public var name: String
+    public var description: String?
+    public var references: [VoiceReference]
+    public init(id: Int, name: String, description: String? = nil, references: [VoiceReference]) {
+        self.id = id; self.name = name; self.description = description; self.references = references
+    }
+}
+
+public struct SceneLine: Sendable {
+    public var speaker: Int
+    public var text: String
+    public init(speaker: Int, text: String) { self.speaker = speaker; self.text = text }
+}
+
+public struct SceneGenerationResult: Sendable {
+    public var outputURL: URL
+    public var lineOutputURLs: [URL]
+    public var lineTimes: [[Double]]?
+    public var codesURL: URL?
+}
+
 public enum ConversationPresentation {
     public static func isPlaybackMode(
         modelIsInPlaybackMode: Bool,
@@ -35,6 +58,8 @@ public struct ConversationLine: Codable, Equatable, Identifiable, Sendable {
     /// Populated by `ConversationScriptParser` segments; used by the voice-
     /// binding system to assign voices per speaker.
     public var speakerKey: String?
+    public var additionalReferences: [VoiceReference]
+    public var characterDescription: String?
 
     public init(
         id: UUID = UUID(),
@@ -43,7 +68,8 @@ public struct ConversationLine: Codable, Equatable, Identifiable, Sendable {
         referenceText: String,
         outputPath: String? = nil,
         status: ConversationLineStatus = .pending,
-        speakerKey: String? = nil
+        speakerKey: String? = nil,
+        additionalReferences: [VoiceReference] = [], characterDescription: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -52,6 +78,20 @@ public struct ConversationLine: Codable, Equatable, Identifiable, Sendable {
         self.outputPath = outputPath
         self.status = status
         self.speakerKey = speakerKey
+        self.additionalReferences = additionalReferences; self.characterDescription = characterDescription
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, text, referenceAudioPath, referenceText, outputPath, status, speakerKey, additionalReferences, characterDescription }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); text = try c.decode(String.self, forKey: .text)
+        referenceAudioPath = try c.decodeIfPresent(String.self, forKey: .referenceAudioPath) ?? ""
+        referenceText = try c.decodeIfPresent(String.self, forKey: .referenceText) ?? ""
+        outputPath = try c.decodeIfPresent(String.self, forKey: .outputPath)
+        status = try c.decodeIfPresent(ConversationLineStatus.self, forKey: .status) ?? .pending
+        speakerKey = try c.decodeIfPresent(String.self, forKey: .speakerKey)
+        additionalReferences = try c.decodeIfPresent([VoiceReference].self, forKey: .additionalReferences) ?? []
+        characterDescription = try c.decodeIfPresent(String.self, forKey: .characterDescription)
     }
 }
 
@@ -63,6 +103,9 @@ public struct ConversationItem: Codable, Equatable, Identifiable, Sendable {
     public var globalModel: String
     public var globalMaxNewTokens: Int
     public var globalEditType: String
+    public var sceneDirection: String
+    public var sceneOutputPath: String?
+    public var lineTimes: [[Double]]?
 
     public init(
         id: UUID = UUID(),
@@ -71,7 +114,8 @@ public struct ConversationItem: Codable, Equatable, Identifiable, Sendable {
         lines: [ConversationLine],
         globalModel: String = TTSModel.default.rawValue,
         globalMaxNewTokens: Int = 1500,
-        globalEditType: String = "none"
+        globalEditType: String = "none",
+        sceneDirection: String = "", sceneOutputPath: String? = nil, lineTimes: [[Double]]? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -80,9 +124,10 @@ public struct ConversationItem: Codable, Equatable, Identifiable, Sendable {
         self.globalModel = globalModel
         self.globalMaxNewTokens = globalMaxNewTokens
         self.globalEditType = globalEditType
+        self.sceneDirection = sceneDirection; self.sceneOutputPath = sceneOutputPath; self.lineTimes = lineTimes
     }
 
-    private enum CodingKeys: String, CodingKey { case id, createdAt, name, lines, globalModel, globalMaxNewTokens, globalEditType }
+    private enum CodingKeys: String, CodingKey { case id, createdAt, name, lines, globalModel, globalMaxNewTokens, globalEditType, sceneDirection, sceneOutputPath, lineTimes }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -92,6 +137,9 @@ public struct ConversationItem: Codable, Equatable, Identifiable, Sendable {
         globalModel = try c.decodeIfPresent(String.self, forKey: .globalModel) ?? TTSModel.fishS2Pro.rawValue
         globalMaxNewTokens = try c.decodeIfPresent(Int.self, forKey: .globalMaxNewTokens) ?? 1500
         globalEditType = try c.decodeIfPresent(String.self, forKey: .globalEditType) ?? "none"
+        sceneDirection = try c.decodeIfPresent(String.self, forKey: .sceneDirection) ?? ""
+        sceneOutputPath = try c.decodeIfPresent(String.self, forKey: .sceneOutputPath)
+        lineTimes = try c.decodeIfPresent([[Double]].self, forKey: .lineTimes)
     }
 
     public static func autoName(from lines: [ConversationLine], limit: Int = 40) -> String {

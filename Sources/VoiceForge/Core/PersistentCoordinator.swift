@@ -11,12 +11,84 @@ struct PersistentRequest: Codable {
     let output: String?
     let max_new_tokens: Int?
     let model: String?
+    let references: [PersistentReference]?
+    let temperature: Double?
+    let top_p: Double?
+    let top_k: Int?
+    let seed: Int?
+    let normalize: Bool?
+    let previous_takes: [PreviousTake]?
+    let save_codes: String?
+    let speakers: [PersistentSpeaker]?
+    let lines: [PersistentLine]?
+    let direction: String?
+    let line_outputs: [String]?
+    let language: String?
+    let audio: String?
+
+    init(action: String, id: String, text: String? = nil, ref_audio: String? = nil,
+         ref_text: String? = nil, output: String? = nil, max_new_tokens: Int? = nil,
+         model: String? = nil, references: [PersistentReference]? = nil,
+         temperature: Double? = nil, top_p: Double? = nil, top_k: Int? = nil,
+         seed: Int? = nil, normalize: Bool? = nil, previous_takes: [PreviousTake]? = nil,
+         save_codes: String? = nil, speakers: [PersistentSpeaker]? = nil,
+         lines: [PersistentLine]? = nil, direction: String? = nil,
+         line_outputs: [String]? = nil, language: String? = nil, audio: String? = nil) {
+        self.action = action; self.id = id; self.text = text; self.ref_audio = ref_audio
+        self.ref_text = ref_text; self.output = output; self.max_new_tokens = max_new_tokens
+        self.model = model; self.references = references; self.temperature = temperature
+        self.top_p = top_p; self.top_k = top_k; self.seed = seed; self.normalize = normalize
+        self.previous_takes = previous_takes; self.save_codes = save_codes; self.speakers = speakers
+        self.lines = lines; self.direction = direction; self.line_outputs = line_outputs; self.language = language; self.audio = audio
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case action, id, text, ref_audio, ref_text, output, max_new_tokens, model, references
+        case temperature, top_p, top_k, seed, normalize, previous_takes, save_codes, speakers, lines
+        case direction, line_outputs, language, audio
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(action, forKey: .action); try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(text, forKey: .text); try c.encodeIfPresent(ref_audio, forKey: .ref_audio)
+        try c.encodeIfPresent(ref_text, forKey: .ref_text); try c.encodeIfPresent(output, forKey: .output)
+        if model == TTSModel.drama3.rawValue { try c.encode(max_new_tokens, forKey: .max_new_tokens) }
+        else { try c.encodeIfPresent(max_new_tokens, forKey: .max_new_tokens) }
+        try c.encodeIfPresent(model, forKey: .model)
+        try c.encodeIfPresent(references, forKey: .references); try c.encodeIfPresent(temperature, forKey: .temperature)
+        try c.encodeIfPresent(top_p, forKey: .top_p); try c.encodeIfPresent(top_k, forKey: .top_k)
+        try c.encodeIfPresent(seed, forKey: .seed); try c.encodeIfPresent(normalize, forKey: .normalize)
+        try c.encodeIfPresent(previous_takes, forKey: .previous_takes); try c.encodeIfPresent(save_codes, forKey: .save_codes)
+        try c.encodeIfPresent(speakers, forKey: .speakers); try c.encodeIfPresent(lines, forKey: .lines)
+        try c.encodeIfPresent(direction, forKey: .direction); try c.encodeIfPresent(line_outputs, forKey: .line_outputs)
+        try c.encodeIfPresent(language, forKey: .language); try c.encodeIfPresent(audio, forKey: .audio)
+    }
 }
+struct PersistentReference: Codable { let audio: String; let text: String }
+struct PersistentSpeaker: Codable { let id: Int; let name: String; let description: String?; let references: [PersistentReference] }
+struct PersistentLine: Codable { let speaker: Int; let text: String }
 struct PersistentEvent: Codable {
     let event: String           // starting|loading_model|ready|accepted|generating|writing|done|error
     let id: String
     let output: String?
     let message: String?
+    let checkpoint: String?
+    let line_outputs: [String]?
+    let line_times: [[Double]]?
+    let codes: String?
+    let duration: Double?
+    let sample_rate: Int?
+    let text: String?
+    let language: String?
+    let warnings: [String]?
+    let done: Int?
+    let total: Int?
+    let phase: String?
+    let channels: Int?
+    let peak: Double?
+    let clipping_ratio: Double?
+    let silence_ratio: Double?
+    let lufs: Double?
 }
 
 // MARK: - Shebang parser
@@ -58,6 +130,7 @@ actor PersistentGenerationCoordinator {
     private var stdinHandle: FileHandle?
     private var stdoutHandle: FileHandle?
     private var isPrepared = false
+    private(set) var checkpoint: String?
     private var preparing = false      // reentrancy guard
     /// Tasks waiting for the preparation to complete.
     private var preparationWaiters: [CheckedContinuation<Bool, Never>] = []
@@ -95,11 +168,10 @@ actor PersistentGenerationCoordinator {
         guard await startHelper() else { return false }
         defer { if !isPrepared { shutdown() } }
         do {
-            let startReq = PersistentRequest(action: "start", id: "prewarm",
-                text: nil, ref_audio: nil, ref_text: nil, output: nil, max_new_tokens: nil, model: model)
+            let startReq = PersistentRequest(action: "start", id: "prewarm", model: model)
             try stdinHandle?.write(contentsOf: encodeLine(startReq))
             while let event = try await readNextEvent() {
-                if event.event == "ready" && event.id == "prewarm" { isPrepared = true; return true }
+                if event.event == "ready" && event.id == "prewarm" { checkpoint = event.checkpoint; isPrepared = true; return true }
                 if event.event == "error" { return false }
             }
         } catch { }
@@ -117,8 +189,10 @@ actor PersistentGenerationCoordinator {
     /// `PersistentError.notReady` that the caller can fall back to CLI on.
     func generate(
         id: String, text: String, referenceAudio: String,
-        referenceText: String, output: String, model: String = TTSModel.default.rawValue, maxNewTokens: Int? = nil
-    ) async throws -> String {
+        referenceText: String, output: String, model: String = TTSModel.default.rawValue, maxNewTokens: Int? = nil,
+        references: [VoiceReference] = [], settings: Drama3Settings = Drama3Settings(),
+        previousTakes: [PreviousTake] = [], saveCodes: String? = nil
+    ) async throws -> PersistentEvent {
         guard isPrepared else { throw PersistentError.notReady }
 
         // Wait for turn in the queue.
@@ -140,7 +214,17 @@ actor PersistentGenerationCoordinator {
 
         let req = PersistentRequest(action: "generate", id: id,
             text: text, ref_audio: referenceAudio, ref_text: referenceText,
-            output: output, max_new_tokens: maxNewTokens, model: model)
+            output: output,
+            max_new_tokens: model == TTSModel.drama3.rawValue ? settings.maxNewTokens ?? maxNewTokens : maxNewTokens,
+            model: model,
+            references: model == TTSModel.drama3.rawValue ? references.map { PersistentReference(audio: $0.audioPath, text: $0.text) } : nil,
+            temperature: model == TTSModel.drama3.rawValue ? settings.temperature : nil,
+            top_p: model == TTSModel.drama3.rawValue ? settings.topP : nil,
+            top_k: model == TTSModel.drama3.rawValue ? settings.topK : nil,
+            seed: model == TTSModel.drama3.rawValue ? settings.seed : nil,
+            normalize: model == TTSModel.drama3.rawValue ? settings.normalize : nil,
+            previous_takes: model == TTSModel.drama3.rawValue ? previousTakes : nil,
+            save_codes: model == TTSModel.drama3.rawValue ? saveCodes : nil)
         try stdin.write(contentsOf: encodeLine(req))
 
         var accepted = false
@@ -148,9 +232,10 @@ actor PersistentGenerationCoordinator {
             guard event.id == id else { continue }
             switch event.event {
             case "accepted": accepted = true; continue
+            case "ready": checkpoint = event.checkpoint; continue
             case "done":
                 try Task.checkCancellation()
-                return event.output ?? output
+                return event
             case "error":
                 throw accepted
                     ? PersistentError.postAcceptFailure(event.message ?? "")
@@ -162,6 +247,32 @@ actor PersistentGenerationCoordinator {
         throw accepted
             ? PersistentError.postAcceptFailure("helper exited unexpectedly")
             : PersistentError.preAcceptFailure("helper exited before accepting request")
+    }
+
+    func send(_ req: PersistentRequest, id: String, onEvent: (@Sendable (PersistentEvent) -> Void)? = nil) async throws -> PersistentEvent {
+        guard isPrepared else { throw PersistentError.notReady }
+        let coordinator: PersistentGenerationCoordinator = await withCheckedContinuation { cont in
+            if !activeRequest { activeRequest = true; cont.resume(returning: self) }
+            else { requestQueue.append(cont) }
+        }
+        defer {
+            if requestQueue.isEmpty { activeRequest = false }
+            else { requestQueue.removeFirst().resume(returning: self) }
+        }
+        guard isPrepared, let stdin = stdinHandle else { throw PersistentError.notReady }
+        try Task.checkCancellation(); try stdin.write(contentsOf: encodeLine(req))
+        var accepted = false
+        while let event = try await coordinator.readNextEvent() {
+            guard event.id == id else { continue }
+            if event.event == "ready" { checkpoint = event.checkpoint }
+            onEvent?(event)
+            if event.event == "accepted" { accepted = true }
+            if event.event == "done" { try Task.checkCancellation(); return event }
+            if event.event == "error" {
+                throw accepted ? PersistentError.postAcceptFailure(event.message ?? "") : PersistentError.preAcceptFailure(event.message ?? "")
+            }
+        }
+        throw accepted ? PersistentError.postAcceptFailure("helper exited unexpectedly") : PersistentError.preAcceptFailure("helper exited before accepting request")
     }
 
     /// Graceful shutdown — close stdin, terminate.

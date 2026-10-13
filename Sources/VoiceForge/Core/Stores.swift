@@ -9,6 +9,7 @@ public enum VoiceForgeStorageKeys {
     public static let ollamaEnabled = "voiceforge.ollamaEnabled"
     public static let selectedOllamaModel = "voiceforge.selectedOllamaModel"
     public static let selectedTTSModel = "voiceforge.selectedTTSModel"
+    public static let drama3Settings = "voiceforge.drama3Settings"
 }
 
 public final class VoicePresetStore {
@@ -131,6 +132,7 @@ public final class HistoryStore {
         switch item.type {
         case .single:
             try? fileManager.removeItem(at: outputURL)
+            removeCodesArtifact(item.codesPath, root: root)
         case .conversation:
             let bundleURL = outputURL.hasDirectoryPath ? outputURL : outputURL.deletingLastPathComponent()
             let bundleResolved = bundleURL.resolvingSymlinksInPath().standardizedFileURL
@@ -140,7 +142,23 @@ public final class HistoryStore {
             // itself, which must never be deleted.
             guard bundleResolved.path.hasPrefix(root.path + "/") else { return }
             try? fileManager.removeItem(at: bundleResolved)
+            if let codesPath = item.codesPath {
+                let codesURL = URL(fileURLWithPath: codesPath).resolvingSymlinksInPath().standardizedFileURL
+                let sceneDir = codesURL.deletingLastPathComponent()
+                if sceneDir.lastPathComponent.hasPrefix("scene-"), sceneDir.path.hasPrefix(root.path + "/") {
+                    try? fileManager.removeItem(at: sceneDir)
+                } else {
+                    removeCodesArtifact(codesPath, root: root)
+                }
+            }
         }
+    }
+
+    private func removeCodesArtifact(_ path: String?, root: URL) {
+        guard let path else { return }
+        let url = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
+        guard url.path.hasPrefix(root.path + "/"), url.pathExtension == "npy" else { return }
+        try? fileManager.removeItem(at: url)
     }
 }
 
@@ -246,7 +264,10 @@ extension HistoryStore {
                     referenceText: manifest.lines.first?.referenceText ?? "",
                     outputPath: preservedPath,
                     type: .conversation,
-                    conversationLines: manifest.lines
+                    conversationLines: manifest.lines,
+                    codesPath: existingConversation?.codesPath ?? manifest.sceneOutputPath.map {
+                        URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("scene.npy").path
+                    }
                 )
                 recoveredConversationIDs.insert(item.id)
                 mergedByKey[historyKey(for: item)] = item

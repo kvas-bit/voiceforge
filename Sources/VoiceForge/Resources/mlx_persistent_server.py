@@ -46,7 +46,14 @@ def load_model(model_name, req_id):
         sys.stdout = saved
         raise RuntimeError(f"Could not load {model_name}: {exc}") from exc
     sys.stdout = saved
-    log_event("ready", req_id, model=model_name)
+    fields = {}
+    if model_name == "drama-3":
+        try:
+            from drama3_mlx.server_adapter import resolve_model_dir
+            fields["checkpoint"] = str(resolve_model_dir())
+        except Exception:
+            pass
+    log_event("ready", req_id, model=model_name, **fields)
 
 
 model = None
@@ -70,6 +77,14 @@ def main():
             except Exception as exc:
                 log_event("error", req_id, message=str(exc))
                 continue
+            continue
+        if model_name == "drama-3" and action in {"generate", "generate_scene", "transcribe", "inspect_reference"}:
+            try:
+                load_model(model_name, req_id)
+                from drama3_mlx.server_adapter import handle
+                handle(req, lambda event: log_event(event.pop("event"), event.pop("id", req_id), **event))
+            except Exception as exc:
+                log_event("error", req_id, message=str(exc))
             continue
         if action != "generate":
             log_event("error", req_id, message="Unknown action")

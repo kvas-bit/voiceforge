@@ -289,6 +289,65 @@ public final class SpeechGenerationService: @unchecked Sendable {
         return await c.prewarmOnce(model: model)
     }
 
+    public func persistentCheckpoint(model: String = TTSModel.default.rawValue) async -> String? {
+        guard usePersistent else { return nil }
+        let coordinator = coordinatorRegistry.getOrCreate()
+        _ = await coordinator.prewarmOnce(model: model)
+        return await coordinator.checkpoint
+    }
+
+    public func transcribe(audio: String, language: String? = nil) async throws -> String {
+        let id = UUID().uuidString
+        let coordinator = coordinatorRegistry.getOrCreate()
+        guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue) else { throw PersistentError.notReady }
+        let event = try await coordinator.send(PersistentRequest(action: "transcribe", id: id, model: TTSModel.drama3.rawValue, language: language, audio: audio), id: id)
+        return event.text ?? ""
+    }
+
+    public func inspectReference(audio: String, text: String? = nil) async throws -> ReferenceInspection {
+        let id = UUID().uuidString
+        let coordinator = coordinatorRegistry.getOrCreate()
+        guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue) else { throw PersistentError.notReady }
+        let event = try await coordinator.send(PersistentRequest(action: "inspect_reference", id: id, text: text, model: TTSModel.drama3.rawValue, audio: audio), id: id)
+        return ReferenceInspection(duration: event.duration, sampleRate: event.sample_rate, channels: event.channels,
+                                   peak: event.peak, clippingRatio: event.clipping_ratio,
+                                   silenceRatio: event.silence_ratio, lufs: event.lufs, warnings: event.warnings ?? [])
+    }
+
+    public func generateScene(
+        speakers: [SceneSpeaker], lines: [SceneLine], direction: String,
+        settings: Drama3Settings, onProgress: (@Sendable (Int, Int) -> Void)? = nil
+    ) async throws -> SceneGenerationResult {
+        guard usePersistent else { throw SpeechGenerationError.shellFailure("Scene generation requires the persistent Drama 3 helper.") }
+        guard !speakers.isEmpty, !lines.isEmpty else { throw SpeechGenerationError.missingText }
+        guard speakers.allSatisfy({ !$0.references.isEmpty && $0.id >= 0 && $0.id < 16 }) else { throw SpeechGenerationError.missingReferenceAudio }
+        let id = UUID().uuidString
+        let root = try renderRootDirectory().appendingPathComponent("outputs", isDirectory: true)
+        let dir = root.appendingPathComponent("scene-\(id)", isDirectory: true)
+        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        let sceneURL = dir.appendingPathComponent("scene.wav")
+        let lineURLs = lines.indices.map { dir.appendingPathComponent("line-\($0).wav") }
+        let codesURL = dir.appendingPathComponent("scene.npy")
+        let req = PersistentRequest(
+            action: "generate_scene", id: id, output: sceneURL.path,
+            max_new_tokens: settings.maxNewTokens, model: TTSModel.drama3.rawValue,
+            temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK,
+            seed: settings.seed, normalize: settings.normalize,
+            save_codes: codesURL.path,
+            speakers: speakers.map { .init(id: $0.id, name: $0.name, description: $0.description, references: $0.references.map { .init(audio: $0.audioPath, text: $0.text) }) },
+            lines: lines.map { .init(speaker: $0.speaker, text: $0.text) },
+            direction: direction.isEmpty ? nil : direction,
+            line_outputs: lineURLs.map(\.path))
+        let coordinator = coordinatorRegistry.getOrCreate()
+        guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue) else { throw PersistentError.notReady }
+        let event = try await coordinator.send(req, id: id) { event in
+            if event.event == "progress", let done = event.done, let total = event.total { onProgress?(done, total) }
+        }
+        try validateWAVOutput(at: sceneURL)
+        return SceneGenerationResult(outputURL: sceneURL, lineOutputURLs: event.line_outputs?.map(URL.init(fileURLWithPath:)) ?? lineURLs,
+                                    lineTimes: event.line_times, codesURL: event.codes.map(URL.init(fileURLWithPath:)) ?? codesURL)
+    }
+
     /// Shuts down the persistent helper.
     public func shutdownPersistentHelper() async {
         await coordinatorRegistry.shutdownCurrent()
@@ -297,13 +356,19 @@ public final class SpeechGenerationService: @unchecked Sendable {
     // MARK: - Generate
 
     public func generate(request: GenerationRequest) async throws -> GenerationResult {
-        let sourceText = request.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceText = request.model == TTSModel.drama3.rawValue ? request.sourceText : request.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
         let referenceAudioPath = request.referenceAudioPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let referenceText = request.referenceText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !sourceText.isEmpty else { throw SpeechGenerationError.missingText }
-        guard !referenceAudioPath.isEmpty else { throw SpeechGenerationError.missingReferenceAudio }
-        guard !referenceText.isEmpty else { throw SpeechGenerationError.missingReferenceText }
+        let dramaReferences = request.references.isEmpty
+            ? (referenceAudioPath.isEmpty || referenceText.isEmpty ? [] : [VoiceReference(audioPath: referenceAudioPath, text: referenceText)])
+            : request.references
+        guard request.model != TTSModel.drama3.rawValue || !dramaReferences.isEmpty else { throw SpeechGenerationError.missingReferenceAudio }
+        guard request.model != TTSModel.drama3.rawValue || dramaReferences.allSatisfy({ !$0.audioPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { throw SpeechGenerationError.missingReferenceAudio }
+        guard request.model != TTSModel.drama3.rawValue || dramaReferences.allSatisfy({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { throw SpeechGenerationError.missingReferenceText }
+        guard request.model == TTSModel.drama3.rawValue || !referenceAudioPath.isEmpty else { throw SpeechGenerationError.missingReferenceAudio }
+        guard request.model == TTSModel.drama3.rawValue || !referenceText.isEmpty else { throw SpeechGenerationError.missingReferenceText }
 
         // Mock path — writes synthetic WAV immediately.
         if let mock = mockGenerate { return try await mock(request) }
@@ -315,6 +380,8 @@ public final class SpeechGenerationService: @unchecked Sendable {
         }
         let outputURL = try outputURL(forID: request.id)
         try ensureOutputDirectoryExists(for: outputURL)
+        let codesURL = request.model == TTSModel.drama3.rawValue
+            ? outputURL.deletingPathExtension().appendingPathExtension("npy") : nil
 
         // Only try persistent when enabled.
         if usePersistent {
@@ -324,21 +391,27 @@ public final class SpeechGenerationService: @unchecked Sendable {
                 do {
                     // Try persistent path. Only pre-accept failures reach CLI fallback.
                     return try await withTaskCancellationHandler {
-                        let resultPath = try await coordinator.generate(
+                        let event = try await coordinator.generate(
                             id: request.id.uuidString,
                             text: formattedPrompt,
                             referenceAudio: referenceAudioPath,
                             referenceText: referenceText,
                             output: outputURL.path,
                             model: request.model,
-                            maxNewTokens: request.maxNewTokens
+                            maxNewTokens: request.maxNewTokens,
+                            references: dramaReferences,
+                            settings: request.drama3Settings,
+                            previousTakes: request.previousTakes,
+                            saveCodes: request.saveCodesPath ?? codesURL?.path
                         )
                         try validateWAVOutput(at: outputURL)
                         return GenerationResult(
                             formattedPrompt: formattedPrompt,
-                            outputURL: URL(fileURLWithPath: resultPath),
+                            outputURL: URL(fileURLWithPath: event.output ?? outputURL.path),
                             standardOutput: "",
-                            standardError: ""
+                            standardError: "",
+                            codesURL: event.codes.map(URL.init(fileURLWithPath:)) ?? codesURL,
+                            duration: event.duration, sampleRate: event.sample_rate
                         )
                     } onCancel: {
                         Task {

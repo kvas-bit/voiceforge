@@ -9,6 +9,7 @@ public struct PromptFormatter: Sendable {
 
     public func format(text: String, emotion: String, model: String = TTSModel.fishS2Pro.rawValue) -> String {
         let preserveTags = model == TTSModel.drama3.rawValue
+        if preserveTags { return text }
         let normalizedText = normalizeAsteriskTags(in: text)
         var seen = Set<String>()
         var fragments: [String] = []
