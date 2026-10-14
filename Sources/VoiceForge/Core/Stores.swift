@@ -10,6 +10,7 @@ public enum VoiceForgeStorageKeys {
     public static let selectedOllamaModel = "voiceforge.selectedOllamaModel"
     public static let selectedTTSModel = "voiceforge.selectedTTSModel"
     public static let drama3Settings = "voiceforge.drama3Settings"
+    public static let drama3ModelVariant = "voiceforge.drama3ModelVariant"
 }
 
 public final class VoicePresetStore {

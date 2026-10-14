@@ -48,6 +48,12 @@ struct StudioView: View {
                         ? viewModel.generationPhase.rawValue.capitalized
                         : "Ready",
                     accent: viewModel.isGenerating)
+                if !viewModel.generationRetryStatus.isEmpty {
+                    Text(viewModel.generationRetryStatus)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        .accessibilityIdentifier("generationRetryStatus")
+                }
                 Text("\(viewModel.sourceText.count) characters")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(VoiceForgeTheme.tertiaryText)

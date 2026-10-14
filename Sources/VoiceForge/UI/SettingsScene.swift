@@ -76,6 +76,17 @@ struct GenerationSettingsView: View {
     private var modelSection: some View {
         Section("Model") {
             modelPicker
+            if viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
+                Picker("Drama 3 variant", selection: Binding(
+                    get: { viewModel.drama3ModelVariant },
+                    set: { viewModel.selectDrama3ModelVariant($0) }
+                )) {
+                    ForEach(Drama3ModelVariant.allCases) { variant in
+                        Text(variant.displayName).tag(variant)
+                    }
+                }
+                .accessibilityIdentifier("drama3VariantPicker")
+            }
             if viewModel.selectedTTSModel != TTSModel.drama3.rawValue { tokenControls }
             Text("Drama 3 is the default model; Fish S2 Pro remains available here.")
                 .font(.system(size: 11)).foregroundStyle(VoiceForgeTheme.tertiaryText)

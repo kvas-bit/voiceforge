@@ -49,6 +49,7 @@ final class AppViewModel: ObservableObject {
         case idle, prewarming, generating, validating, completed, failed, cancelled
     }
     @Published var generationPhase: GenerationPhase = .idle
+    @Published var generationRetryStatus = ""
 
     /// Sentinel id used by the Studio "loose reference" preview button so the same
     /// `previewingVoiceID` field works for both saved presets and the unbound clip.
@@ -77,6 +78,7 @@ final class AppViewModel: ObservableObject {
     @Published var selectedTTSModel: String {
         didSet { defaults.set(selectedTTSModel, forKey: VoiceForgeStorageKeys.selectedTTSModel) }
     }
+    @Published var drama3ModelVariant: Drama3ModelVariant = .standardQ4
 
     // Generation controls shared by both Fish models.
     @Published var maxNewTokens: Double = 1500 { didSet { persistDrama3Settings() } }
@@ -180,6 +182,8 @@ final class AppViewModel: ObservableObject {
         selectedOllamaModel = defaults.string(forKey: VoiceForgeStorageKeys.selectedOllamaModel) ?? ""
         selectedTTSModel = TTSModel(rawValue: defaults.string(forKey: VoiceForgeStorageKeys.selectedTTSModel) ?? "")?.rawValue
             ?? TTSModel.default.rawValue
+        let initialDrama3Variant = Drama3ModelVariant(rawValue: defaults.string(forKey: VoiceForgeStorageKeys.drama3ModelVariant) ?? "q4") ?? .standardQ4
+        drama3ModelVariant = initialDrama3Variant
         let savedDramaSettings = defaults.data(forKey: VoiceForgeStorageKeys.drama3Settings)
             .flatMap { try? JSONDecoder().decode(Drama3Settings.self, from: $0) } ?? Drama3Settings()
         maxNewTokens = Double(savedDramaSettings.maxNewTokens ?? 1500)
@@ -202,6 +206,7 @@ final class AppViewModel: ObservableObject {
         presetStore = VoicePresetStore(defaults: defaults)
         self.historyStore = historyStore
         self.generationService = generationService
+        generationService.configureDrama3ModelVariant(initialDrama3Variant)
         presets = presetStore.load()
         conversationPlayer = ConversationPlayer(audioPlayer: audioPlayer)
         let loaded = self.historyStore.load()
@@ -309,10 +314,26 @@ final class AppViewModel: ObservableObject {
     func selectTTSModel(_ model: String) {
         guard TTSModel(rawValue: model) != nil, selectedTTSModel != model else { return }
         selectedTTSModel = model
+        loadedCheckpoint = ""
+        restartHelper(model: model)
+    }
+
+    func selectDrama3ModelVariant(_ variant: Drama3ModelVariant) {
+        guard drama3ModelVariant != variant else { return }
+        drama3ModelVariant = variant
+        defaults.set(variant.rawValue, forKey: VoiceForgeStorageKeys.drama3ModelVariant)
+        loadedCheckpoint = ""
+        generationService.configureDrama3ModelVariant(variant)
+        restartHelper(model: selectedTTSModel)
+    }
+
+    private func restartHelper(model: String) {
         let service = generationService
-        Task {
+        Task { [weak self] in
             await service.shutdownPersistentHelper()
             _ = await service.prewarmPersistentHelper(model: model)
+            let checkpoint = await service.persistentCheckpoint(model: model) ?? ""
+            await MainActor.run { self?.loadedCheckpoint = checkpoint }
         }
     }
 
@@ -623,6 +644,7 @@ final class AppViewModel: ObservableObject {
         persistReferenceFields()
         generationError = ""
         cliOutput = ""
+        generationRetryStatus = ""
         isGenerating = true
         generationPhase = .prewarming
 
@@ -654,9 +676,18 @@ final class AppViewModel: ObservableObject {
                         maxNewTokens: model == TTSModel.drama3.rawValue && autoBudget ? nil : manualBudget,
                         references: refs, drama3Settings: settings, previousTakes: priorTakes)
                     await MainActor.run { self?.pendingGenerationID = requestID; self?.generationPhase = .generating }
-                    let result = try await service.generate(request: request)
+                    if ProcessInfo.processInfo.arguments.contains("--uitest-mock-generation"),
+                       let retryReason = ProcessInfo.processInfo.environment["VOICEFORGE_UITEST_RETRY_REASON"] {
+                        await MainActor.run { self?.showRetryStatus(retryReason) }
+                        try await Task.sleep(nanoseconds: 1_000_000_000)
+                    }
+                    let result = try await service.generate(request: request) { [weak self] event in
+                        guard event.event == "retry" else { return }
+                        Task { @MainActor in self?.showRetryStatus(event.reason ?? "incomplete") }
+                    }
                     if Task.isCancelled { return }
                     await MainActor.run {
+                        self?.generationRetryStatus = ""
                         self?.takeOutputURLs.append(result.outputURL)
                         self?.completeGeneration(result, id: requestID, model: model, seed: settings.seed)
                         if index + 1 < count {
@@ -671,6 +702,7 @@ final class AppViewModel: ObservableObject {
                     self?.isGenerating = false
                     self?.pendingGenerationID = nil
                     self?.generationError = ""
+                    self?.generationRetryStatus = ""
                     self?.generationPhase = .cancelled
                     self?.cliOutput = "Generation cancelled."
                 }
@@ -679,6 +711,7 @@ final class AppViewModel: ObservableObject {
                     self?.isGenerating = false
                     self?.pendingGenerationID = nil
                     self?.generationError = error.localizedDescription
+                    self?.generationRetryStatus = ""
                     self?.generationPhase = .failed
                 }
             }
@@ -729,6 +762,20 @@ final class AppViewModel: ObservableObject {
         generationTask = nil
         generationPhase = .cancelled
         isGenerating = false
+        generationRetryStatus = ""
+    }
+
+    private static func retryReason(_ reason: String?) -> String {
+        switch reason {
+        case "stall": "stall"
+        case "runaway": "runaway"
+        case "silence", "done_by_silence": "silence"
+        default: "incomplete output"
+        }
+    }
+
+    private func showRetryStatus(_ reason: String) {
+        generationRetryStatus = "Retrying take (\(Self.retryReason(reason)) detected)…"
     }
 
     func renameHistory(_ item: GenerationHistoryItem, to newName: String) {
@@ -1187,6 +1234,9 @@ final class AppViewModel: ObservableObject {
             let result = try await generationService.generateScene(speakers: speakers, lines: lines,
                 direction: sceneDirection, settings: drama3Settings) { [weak self] done, total in
                     Task { @MainActor in self?.conversationProgress = "Rendering scene · \(done)/\(total)" }
+                } onEvent: { [weak self] event in
+                    guard event.event == "retry" else { return }
+                    Task { @MainActor in self?.showSceneRetryStatus(event.reason ?? "incomplete") }
                 }
             guard !Task.isCancelled else { return }
             for i in conversationLines.indices {
@@ -1205,6 +1255,10 @@ final class AppViewModel: ObservableObject {
             generationError = error.localizedDescription
             for i in conversationLines.indices { conversationLines[i].status = .failed }
         }
+    }
+
+    private func showSceneRetryStatus(_ reason: String) {
+        conversationProgress = "Retrying take (\(Self.retryReason(reason)) detected)…"
     }
 
     func playConversationScene() {

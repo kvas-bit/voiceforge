@@ -129,7 +129,12 @@ public final class SpeechGenerationService: @unchecked Sendable {
             let path = defaultHelperPath(mlxExecutable: mlxURL)
             return (pythonURL, path)
         }
-        return CoordinatorRegistry(resolver: resolver, fallbackHelperPath: fallbackPath, fileManager: fileManager)
+        return CoordinatorRegistry(resolver: resolver, fallbackHelperPath: fallbackPath, fileManager: fileManager,
+                                  drama3ModelDirectory: Drama3ModelVariant.standardQ4.checkpointDirectory)
+    }
+
+    public func configureDrama3ModelVariant(_ variant: Drama3ModelVariant) {
+        coordinatorRegistry.configureDrama3ModelDirectory(variant.checkpointDirectory)
     }
 
     private static func defaultHelperPath(mlxExecutable: URL?) -> String {
@@ -316,7 +321,8 @@ public final class SpeechGenerationService: @unchecked Sendable {
 
     public func generateScene(
         speakers: [SceneSpeaker], lines: [SceneLine], direction: String,
-        settings: Drama3Settings, onProgress: (@Sendable (Int, Int) -> Void)? = nil
+        settings: Drama3Settings, onProgress: (@Sendable (Int, Int) -> Void)? = nil,
+        onEvent: (@Sendable (PersistentEvent) -> Void)? = nil
     ) async throws -> SceneGenerationResult {
         guard usePersistent else { throw SpeechGenerationError.shellFailure("Scene generation requires the persistent Drama 3 helper.") }
         guard !speakers.isEmpty, !lines.isEmpty else { throw SpeechGenerationError.missingText }
@@ -342,6 +348,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
         guard await coordinator.prewarmOnce(model: TTSModel.drama3.rawValue) else { throw PersistentError.notReady }
         let event = try await coordinator.send(req, id: id) { event in
             if event.event == "progress", let done = event.done, let total = event.total { onProgress?(done, total) }
+            onEvent?(event)
         }
         try validateWAVOutput(at: sceneURL)
         return SceneGenerationResult(outputURL: sceneURL, lineOutputURLs: event.line_outputs?.map(URL.init(fileURLWithPath:)) ?? lineURLs,
@@ -355,7 +362,7 @@ public final class SpeechGenerationService: @unchecked Sendable {
 
     // MARK: - Generate
 
-    public func generate(request: GenerationRequest) async throws -> GenerationResult {
+    public func generate(request: GenerationRequest, onEvent: (@Sendable (PersistentEvent) -> Void)? = nil) async throws -> GenerationResult {
         let sourceText = request.model == TTSModel.drama3.rawValue ? request.sourceText : request.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
         let referenceAudioPath = request.referenceAudioPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let referenceText = request.referenceText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -402,7 +409,8 @@ public final class SpeechGenerationService: @unchecked Sendable {
                             references: dramaReferences,
                             settings: request.drama3Settings,
                             previousTakes: request.previousTakes,
-                            saveCodes: request.saveCodesPath ?? codesURL?.path
+                            saveCodes: request.saveCodesPath ?? codesURL?.path,
+                            onEvent: onEvent
                         )
                         try validateWAVOutput(at: outputURL)
                         return GenerationResult(

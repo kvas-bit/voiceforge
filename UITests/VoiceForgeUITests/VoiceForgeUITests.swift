@@ -342,6 +342,18 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(drama3Option.waitForExistence(timeout: 5))
         drama3Option.click()
 
+        let variantPicker = app.descendants(matching: .any)["drama3VariantPicker"]
+        XCTAssertTrue(variantPicker.waitForExistence(timeout: 10))
+        variantPicker.click()
+        let q5Option = app.menuItems["High fidelity — q5 (~36 GB peak; close other heavy apps)"]
+        XCTAssertTrue(q5Option.waitForExistence(timeout: 5))
+        q5Option.click()
+        XCTAssertTrue((variantPicker.value as? String)?.contains("High fidelity") == true)
+        variantPicker.click()
+        let q4Option = app.menuItems["Standard — q4 (~31 GB peak, default)"]
+        XCTAssertTrue(q4Option.waitForExistence(timeout: 5))
+        q4Option.click()
+
         let expressive = app.buttons["drama3ExpressivePresetButton"]
         XCTAssertTrue(expressive.waitForExistence(timeout: 10))
         expressive.click()
@@ -361,6 +373,20 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["selectTake-2"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["selectTake-0"].exists)
         XCTAssertTrue(app.buttons["selectTake-1"].exists)
+    }
+
+    func testRetryEventShowsSubtleGenerationStatus() {
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Reference transcript.",
+            "VOICEFORGE_UITEST_SOURCE_TEXT": "A retry status test.",
+            "VOICEFORGE_UITEST_RETRY_REASON": "stall"
+        ])
+        app.buttons["generateButton"].click()
+        let status = app.staticTexts["generationRetryStatus"]
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        XCTAssertEqual(status.label, "Retrying take (stall detected)…")
+        XCTAssertTrue(waitUntilEnabled(app.buttons["playOutputButton"], timeout: 15))
     }
 
     func testDrama3ConversationSceneModeToggle() {

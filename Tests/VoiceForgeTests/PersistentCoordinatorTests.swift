@@ -32,12 +32,18 @@ private func makeFakeHelper(
         if [ "$action" = "start" ]; then
             echo "EVENT:{\\"event\\":\\"starting\\",\\"id\\":\\"$id\\"}"
             echo "EVENT:{\\"event\\":\\"loading_model\\",\\"id\\":\\"$id\\"}"
-            echo "EVENT:{\\"event\\":\\"ready\\",\\"id\\":\\"$id\\"}"
+            echo "EVENT:{\\"event\\":\\"ready\\",\\"id\\":\\"$id\\",\\"checkpoint\\":\\"$VOICEFORGE_DRAMA3_MODEL_DIR\\"}"
         elif [ "$text" = "BLOCK" ]; then
             echo "EVENT:{\\"event\\":\\"accepted\\",\\"id\\":\\"$id\\"}"
             echo "EVENT:{\\"event\\":\\"generating\\",\\"id\\":\\"$id\\"}"
+            echo "EVENT:{\\"event\\":\\"retry\\",\\"id\\":\\"$id\\",\\"attempt\\":2,\\"reason\\":\\"stall\\"}"
             touch "$out"
             exec sleep 300
+        elif [ "$text" = "RETRY" ]; then
+            echo "EVENT:{\\"event\\":\\"accepted\\",\\"id\\":\\"$id\\"}"
+            echo "EVENT:{\\"event\\":\\"retry\\",\\"id\\":\\"$id\\",\\"attempt\\":2,\\"reason\\":\\"stall\\"}"
+            sleep 1
+            echo "EVENT:{\\"event\\":\\"done\\",\\"id\\":\\"$id\\",\\"attempts\\":[{\\"attempt\\":1,\\"reason\\":\\"stall\\"},{\\"attempt\\":2,\\"reason\\":null}]}"
         elif [ "$text" = "ERROR_POST" ]; then
             echo "EVENT:{\\"event\\":\\"accepted\\",\\"id\\":\\"$id\\"}"
             echo "EVENT:{\\"event\\":\\"error\\",\\"id\\":\\"$id\\",\\"message\\":\\"post-accept crash\\"}"
@@ -70,6 +76,13 @@ private func makeFakeRegistry(capture: String, lc: String) throws -> (reg: Coord
         fallbackHelperPath: script.path,
         fileManager: .default)
     return (reg, c1)
+}
+
+private final class LockedEventCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [PersistentEvent] = []
+    func append(_ event: PersistentEvent) { lock.lock(); stored.append(event); lock.unlock() }
+    var events: [PersistentEvent] { lock.lock(); defer { lock.unlock() }; return stored }
 }
 
 // Helper to build a SpeechGenerationService with fake registry.
@@ -107,6 +120,46 @@ actor ActorCounter {
 // MARK: - Tests
 
 struct PersistentCoordinatorTests {
+    @Test func retryEventsAndLongRenderWaitAreHandledUntilDone() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("VF-retry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let (reg, cleanup) = try makeFakeRegistry(capture: tmp.appendingPathComponent("capture").path, lc: tmp.appendingPathComponent("launch").path)
+        defer { cleanup() }
+        let coordinator = reg.getOrCreate()
+        #expect(await coordinator.prewarmOnce())
+        let collector = LockedEventCollector()
+        let start = Date()
+        let done = try await coordinator.generate(id: "retry-long", text: "RETRY", referenceAudio: "/r.wav", referenceText: "r",
+            output: tmp.appendingPathComponent("out.wav").path, model: "fish-s2-pro", onEvent: { collector.append($0) })
+        #expect(Date().timeIntervalSince(start) >= 0.9)
+        #expect(done.attempts?.count == 2)
+        let receivedRetries = collector.events.filter { $0.event == "retry" }
+        #expect(receivedRetries.count == 1)
+        #expect(receivedRetries.first?.attempt == 2)
+        #expect(receivedRetries.first?.reason == "stall")
+    }
+
+    @Test func variantChangeRestartsHelperWithSelectedModelDirectory() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("VF-variant-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let capture = tmp.appendingPathComponent("capture").path
+        let launchCount = tmp.appendingPathComponent("launch").path
+        let (sh, script, cleanup) = try makeFakeHelper(capturePath: capture, launchCountPath: launchCount)
+        defer { cleanup() }
+        let registry = CoordinatorRegistry(resolver: { _ in (sh, script.path) }, fallbackHelperPath: script.path,
+            fileManager: .default, drama3ModelDirectory: "/models/drama-3-q4")
+        let first = registry.getOrCreate()
+        #expect(await first.prewarmOnce(model: "drama-3"))
+        #expect(await first.checkpoint == "/models/drama-3-q4")
+        registry.configureDrama3ModelDirectory("/models/drama-3-q5")
+        let second = registry.getOrCreate()
+        #expect(await second.prewarmOnce(model: "drama-3"))
+        #expect(await second.checkpoint == "/models/drama-3-q5")
+        #expect(readLaunchCount(launchCount) == 2)
+    }
+
     @Test func drama3SceneRequestEncodesContractFieldsAndAutoBudgetAsNull() throws {
         let request = PersistentRequest(
             action: "generate_scene", id: "scene-id", output: "/tmp/scene.wav", max_new_tokens: nil,

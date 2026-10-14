@@ -9,6 +9,22 @@ public enum TTSModel: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
+public enum Drama3ModelVariant: String, CaseIterable, Codable, Identifiable, Sendable {
+    case standardQ4 = "q4"
+    case highFidelityQ5 = "q5"
+
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .standardQ4: "Standard — q4 (~31 GB peak, default)"
+        case .highFidelityQ5: "High fidelity — q5 (~36 GB peak; close other heavy apps)"
+        }
+    }
+    public var checkpointDirectory: String {
+        "\(NSHomeDirectory())/Library/Application Support/VoiceForge/models/drama-3-\(rawValue)"
+    }
+}
+
 public struct VoicePreset: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var name: String

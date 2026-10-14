@@ -42,6 +42,23 @@ struct AppViewModelTests {
         #expect(restored.drama3Settings == Drama3Settings(temperature: 0.9, topP: 0.85, topK: 24, seed: 1234, normalize: false, maxNewTokens: 2240))
     }
 
+    @Test func drama3ModelVariantPersistsAcrossViewModels() throws {
+        let suite = "VoiceForge-drama-variant-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, cleanup) = try makeIsolatedHistoryStore()
+        defer { cleanup() }
+        let service = SpeechGenerationService.__internalInit(executableURL: nil, renderRoot: nil, fileManager: .default,
+            runner: { _, _, _ in ("", "", 0) }, usePersistent: false)
+        let first = AppViewModel(defaults: defaults, historyStore: store, generationService: service)
+        #expect(first.drama3ModelVariant == .standardQ4)
+        first.selectDrama3ModelVariant(.highFidelityQ5)
+        #expect(defaults.string(forKey: VoiceForgeStorageKeys.drama3ModelVariant) == "q5")
+        let restored = AppViewModel(defaults: defaults, historyStore: store, generationService: service)
+        #expect(restored.drama3ModelVariant == .highFidelityQ5)
+        #expect(restored.drama3ModelVariant.checkpointDirectory.hasSuffix("/models/drama-3-q5"))
+    }
+
     @Test func previewUsesSelectedModelFormatter() throws {
         let suite = "VoiceForge-preview-model-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

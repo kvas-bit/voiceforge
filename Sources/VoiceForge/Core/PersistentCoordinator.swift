@@ -70,12 +70,12 @@ struct PersistentRequest: Codable {
 struct PersistentReference: Codable { let audio: String; let text: String }
 struct PersistentSpeaker: Codable { let id: Int; let name: String; let description: String?; let references: [PersistentReference] }
 struct PersistentLine: Codable { let speaker: Int; let text: String }
-struct PersistentEvent: Codable {
-    let event: String           // starting|loading_model|ready|accepted|generating|writing|done|error
-    let id: String
+public struct PersistentEvent: Codable, Sendable {
+    public let event: String           // starting|loading_model|ready|accepted|generating|writing|done|error
+    public let id: String
     let output: String?
     let message: String?
-    let checkpoint: String?
+    public let checkpoint: String?
     let line_outputs: [String]?
     let line_times: [[Double]]?
     let codes: String?
@@ -93,7 +93,11 @@ struct PersistentEvent: Codable {
     let silence_ratio: Double?
     let lufs: Double?
     let wer: Double?
+    public let attempt: Int?
+    public let reason: String?
+    public let attempts: [PersistentAttempt]?
 }
+public struct PersistentAttempt: Codable, Sendable { public let attempt: Int?; public let reason: String? }
 
 // MARK: - Shebang parser
 
@@ -140,6 +144,7 @@ actor PersistentGenerationCoordinator {
     private var preparationWaiters: [CheckedContinuation<Bool, Never>] = []
     private let helperPath: String
     private let executableURL: URL
+    private let drama3ModelDirectory: String?
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
     private var lineBuffer = Data()
@@ -148,9 +153,10 @@ actor PersistentGenerationCoordinator {
     private var requestQueue: [CheckedContinuation<PersistentGenerationCoordinator, Never>] = []
     private var activeRequest = false
 
-    init(helperPath: String, executableURL: URL) {
+    init(helperPath: String, executableURL: URL, drama3ModelDirectory: String? = nil) {
         self.helperPath = helperPath
         self.executableURL = executableURL
+        self.drama3ModelDirectory = drama3ModelDirectory
     }
 
     // MARK: - Lifecycle
@@ -195,7 +201,8 @@ actor PersistentGenerationCoordinator {
         id: String, text: String, referenceAudio: String,
         referenceText: String, output: String, model: String = TTSModel.default.rawValue, maxNewTokens: Int? = nil,
         references: [VoiceReference] = [], settings: Drama3Settings = Drama3Settings(),
-        previousTakes: [PreviousTake] = [], saveCodes: String? = nil
+        previousTakes: [PreviousTake] = [], saveCodes: String? = nil,
+        onEvent: (@Sendable (PersistentEvent) -> Void)? = nil
     ) async throws -> PersistentEvent {
         guard isPrepared else { throw PersistentError.notReady }
 
@@ -236,10 +243,12 @@ actor PersistentGenerationCoordinator {
             guard event.id == id else { continue }
             switch event.event {
             case "accepted": accepted = true; continue
-            case "ready": checkpoint = event.checkpoint; continue
+            case "ready": checkpoint = event.checkpoint; onEvent?(event); continue
             case "done":
+                onEvent?(event)
                 try Task.checkCancellation()
                 return event
+            case "retry": onEvent?(event); continue
             case "error":
                 throw accepted
                     ? PersistentError.postAcceptFailure(event.message ?? "")
@@ -300,6 +309,11 @@ actor PersistentGenerationCoordinator {
     private func startHelper() async -> Bool {
         let proc = Process()
         proc.executableURL = executableURL; proc.arguments = [helperPath]
+        if let drama3ModelDirectory {
+            var environment = ProcessInfo.processInfo.environment
+            environment["VOICEFORGE_DRAMA3_MODEL_DIR"] = drama3ModelDirectory
+            proc.environment = environment
+        }
         let sin = Pipe(); let sout = Pipe(); let serr = Pipe()
         proc.standardInput = sin; proc.standardOutput = sout; proc.standardError = serr
         do { try proc.run() } catch { return false }
@@ -349,6 +363,7 @@ public final class CoordinatorRegistry: @unchecked Sendable {
     private var coordinator: PersistentGenerationCoordinator?
     private let fileManager: FileManager
     private let defaultHelperPath: String
+    private var drama3ModelDirectory: String?
 
     /// A resolver that produces (executableURL, helperPath) for the coordinator.
     /// Called lazily on first access so the production `init` doesn't need the
@@ -357,10 +372,11 @@ public final class CoordinatorRegistry: @unchecked Sendable {
 
     private let resolver: Resolver
 
-    init(resolver: @escaping Resolver, fallbackHelperPath: String, fileManager: FileManager) {
+    init(resolver: @escaping Resolver, fallbackHelperPath: String, fileManager: FileManager, drama3ModelDirectory: String? = nil) {
         self.resolver = resolver
         self.defaultHelperPath = fallbackHelperPath
         self.fileManager = fileManager
+        self.drama3ModelDirectory = drama3ModelDirectory
     }
 
     func getOrCreate() -> PersistentGenerationCoordinator {
@@ -368,12 +384,22 @@ public final class CoordinatorRegistry: @unchecked Sendable {
         if let c = coordinator { return c }
         // If resolver fails, use a clearly invalid path so startHelper→prewarmOnce return false.
         let cfg = resolver(fileManager) ?? (URL(fileURLWithPath: "/dev/null"), defaultHelperPath)
-        let c = PersistentGenerationCoordinator(helperPath: cfg.helperPath, executableURL: cfg.executableURL)
+        let c = PersistentGenerationCoordinator(helperPath: cfg.helperPath, executableURL: cfg.executableURL,
+                                                drama3ModelDirectory: drama3ModelDirectory)
         coordinator = c; return c
     }
 
     func shutdownCurrent() async {
         let c = exchangeCoordinator(nil); await c?.shutdown()
+    }
+
+    func configureDrama3ModelDirectory(_ directory: String) {
+        lock.lock()
+        drama3ModelDirectory = directory
+        let old = coordinator
+        coordinator = nil
+        lock.unlock()
+        if let old { Task { await old.shutdown() } }
     }
 
     private func exchangeCoordinator(_ newValue: PersistentGenerationCoordinator?) -> PersistentGenerationCoordinator? {
