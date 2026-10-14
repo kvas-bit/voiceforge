@@ -538,7 +538,9 @@ final class AppViewModel: ObservableObject {
         Task {
             do {
                 let mock = ProcessInfo.processInfo.arguments.contains("--uitest-mock-generation")
-                let text = mock ? "Whisper suggested transcript." : try await generationService.transcribe(audio: path)
+                let text = mock
+                    ? (ProcessInfo.processInfo.environment["VOICEFORGE_UITEST_TRANSCRIBE_TEXT"] ?? "Whisper suggested transcript.")
+                    : try await generationService.transcribe(audio: path)
                 let typed = await MainActor.run { () -> String in
                     if let additionalIndex, self.additionalVoiceReferences.indices.contains(additionalIndex) {
                         return self.additionalVoiceReferences[additionalIndex].text
@@ -547,7 +549,8 @@ final class AppViewModel: ObservableObject {
                 }
                 let info = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil : (mock
-                        ? ReferenceInspection(duration: 1, sampleRate: 44100, channels: 1, peak: nil, clippingRatio: nil, silenceRatio: nil, lufs: nil, wordErrorRate: 0.75, warnings: [])
+                        ? ReferenceInspection(duration: 1, sampleRate: 44100, channels: 1, peak: nil, clippingRatio: nil, silenceRatio: nil, lufs: nil,
+                                              wordErrorRate: Double(ProcessInfo.processInfo.environment["VOICEFORGE_UITEST_WER"] ?? "0.75"), warnings: [])
                         : try await generationService.inspectReference(audio: path, text: typed))
                 await MainActor.run {
                     if let additionalIndex, self.additionalVoiceReferences.indices.contains(additionalIndex) {
@@ -679,7 +682,7 @@ final class AppViewModel: ObservableObject {
                     if ProcessInfo.processInfo.arguments.contains("--uitest-mock-generation"),
                        let retryReason = ProcessInfo.processInfo.environment["VOICEFORGE_UITEST_RETRY_REASON"] {
                         await MainActor.run { self?.showRetryStatus(retryReason) }
-                        try await Task.sleep(nanoseconds: 1_000_000_000)
+                        try await Task.sleep(nanoseconds: 5_000_000_000)
                     }
                     let result = try await service.generate(request: request) { [weak self] event in
                         guard event.event == "retry" else { return }

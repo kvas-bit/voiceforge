@@ -248,6 +248,31 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[typed].waitForExistence(timeout: 10))
     }
 
+    func testMinorTranscriptDifferencesOfferWhisperVersionWithoutReplacingTypedText() {
+        let typed = "Al sent the date on 1st June"
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": typed,
+            "VOICEFORGE_UITEST_TRANSCRIBE_TEXT": "AI sent the day on first June",
+            "VOICEFORGE_UITEST_WER": "0.036"
+        ])
+        goToSidebar(app, "Voices")
+        let newVoiceButton = app.buttons["newVoiceButton"]
+        XCTAssertTrue(newVoiceButton.waitForExistence(timeout: 10))
+        newVoiceButton.click()
+        let autoTranscribeButton = app.buttons["autoTranscribeMainButton"]
+        XCTAssertTrue(autoTranscribeButton.waitForExistence(timeout: 10))
+        autoTranscribeButton.click()
+
+        let hint = app.descendants(matching: .any)["transcriptDifferenceHint-mainTranscriptSuggestion"]
+        XCTAssertTrue(hint.waitForExistence(timeout: 10))
+        XCTAssertTrue(hint.label.contains("Possible transcript differences:"))
+        XCTAssertEqual(app.textFields["referenceTranscriptField"].value as? String, typed)
+        XCTAssertTrue(app.buttons["useTranscriptSuggestion-mainTranscriptSuggestion"].label.contains("Use Whisper version"))
+        app.buttons["useTranscriptSuggestion-mainTranscriptSuggestion"].click()
+        XCTAssertEqual(app.textFields["referenceTranscriptField"].value as? String, "AI sent the day on first June")
+    }
+
     // MARK: - Sidebar navigation
 
     func testSidebarNavigationSwitchesDestinations() {
@@ -383,7 +408,7 @@ final class VoiceForgeUITests: XCTestCase {
             "VOICEFORGE_UITEST_RETRY_REASON": "stall"
         ])
         app.buttons["generateButton"].click()
-        let status = app.staticTexts["generationRetryStatus"]
+        let status = app.descendants(matching: .any)["generationRetryStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertEqual(status.label, "Retrying take (stall detected)…")
         XCTAssertTrue(waitUntilEnabled(app.buttons["playOutputButton"], timeout: 15))

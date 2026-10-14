@@ -318,9 +318,16 @@ private struct NewVoiceSheet: View {
                 Label("This differs from your transcript (WER \(Int((suggestion.wordErrorRate ?? 0) * 100))%). Check the audio before replacing it.", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(VoiceForgeTheme.danger)
                     .accessibilityIdentifier("transcriptMismatchWarning-\(id)")
+            } else if let differences = suggestion.differenceSummary(comparedTo: current) {
+                let hint = "Possible transcript differences: \(differences)"
+                Text(hint)
+                    .font(.caption).foregroundStyle(VoiceForgeTheme.secondaryText)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(hint)
+                    .accessibilityIdentifier("transcriptDifferenceHint-\(id)")
             }
             HStack {
-                Button("Use this", action: use).accessibilityIdentifier("useTranscriptSuggestion-\(id)")
+                Button("Use Whisper version", action: use).accessibilityIdentifier("useTranscriptSuggestion-\(id)")
                 Button("Keep mine", action: keep).accessibilityIdentifier("keepTranscriptSuggestion-\(id)")
             }.font(.caption)
         }

@@ -472,7 +472,7 @@ private struct SpeakerAssignmentCard: View {
                 }
             }
 
-            if viewModel.selectedTTSModel == TTSModel.drama3.rawValue, binding != nil {
+            if let binding, viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
                 Button("Auto-transcribe speaker reference") { viewModel.autoTranscribeSpeakerReference(speakerKey) }
                     .buttonStyle(VoiceForgeSecondaryButtonStyle())
                     .accessibilityIdentifier("speakerAutoTranscribe-\(speakerKey)")
@@ -482,9 +482,16 @@ private struct SpeakerAssignmentCard: View {
                         if suggestion.materiallyDifferent {
                             Text("Transcript differs (WER \(Int((suggestion.wordErrorRate ?? 0) * 100))%). Check the clip.")
                                 .font(.caption).foregroundStyle(VoiceForgeTheme.danger)
+                        } else if let differences = suggestion.differenceSummary(comparedTo: binding.referenceText) {
+                            let hint = "Possible transcript differences: \(differences)"
+                            Text(hint)
+                                .font(.caption).foregroundStyle(VoiceForgeTheme.secondaryText)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(hint)
+                                .accessibilityIdentifier("speakerTranscriptDifferenceHint-\(speakerKey)")
                         }
                         HStack {
-                            Button("Use this") { viewModel.useSpeakerTranscriptSuggestion(speakerKey) }
+                            Button("Use Whisper version") { viewModel.useSpeakerTranscriptSuggestion(speakerKey) }
                             Button("Keep mine") { viewModel.keepSpeakerTranscript(speakerKey) }
                         }.font(.caption)
                     }

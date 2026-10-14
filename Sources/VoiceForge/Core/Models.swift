@@ -70,6 +70,51 @@ public struct TranscriptSuggestion: Equatable, Sendable {
     public let text: String
     public let wordErrorRate: Double?
     public var materiallyDifferent: Bool { (wordErrorRate ?? 0) > 0.3 }
+    public var hasPossibleDifferences: Bool { (wordErrorRate ?? 0) > 0 && !materiallyDifferent }
+
+    public func differenceSummary(comparedTo current: String, limit: Int = 4) -> String? {
+        guard hasPossibleDifferences else { return nil }
+        let typed = current.split(whereSeparator: \.isWhitespace).map(String.init)
+        let suggested = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let rows = typed.count + 1
+        let columns = suggested.count + 1
+        var distance = Array(repeating: Array(repeating: 0, count: columns), count: rows)
+        for i in 0..<rows { distance[i][0] = i }
+        for j in 0..<columns { distance[0][j] = j }
+        if !typed.isEmpty, !suggested.isEmpty {
+            for i in 1..<rows {
+                for j in 1..<columns {
+                    let cost = typed[i - 1] == suggested[j - 1] ? 0 : 1
+                    distance[i][j] = min(distance[i - 1][j] + 1,
+                                         distance[i][j - 1] + 1,
+                                         distance[i - 1][j - 1] + cost)
+                }
+            }
+        }
+
+        var changes: [String] = []
+        var i = typed.count
+        var j = suggested.count
+        while i > 0 || j > 0 {
+            if i > 0, j > 0, typed[i - 1] == suggested[j - 1] {
+                i -= 1; j -= 1
+            } else if i > 0, j > 0, distance[i][j] == distance[i - 1][j - 1] + 1 {
+                changes.append("\(typed[i - 1]) → \(suggested[j - 1])")
+                i -= 1; j -= 1
+            } else if i > 0, distance[i][j] == distance[i - 1][j] + 1 {
+                changes.append("remove \(typed[i - 1])")
+                i -= 1
+            } else if j > 0 {
+                changes.append("add \(suggested[j - 1])")
+                j -= 1
+            }
+        }
+        guard !changes.isEmpty else { return nil }
+        changes.reverse()
+        let shown = changes.prefix(max(1, limit)).joined(separator: ", ")
+        return changes.count > limit ? shown + ", …" : shown
+    }
+
     public func transcriptValue(preserving current: String) -> String {
         current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : current
     }

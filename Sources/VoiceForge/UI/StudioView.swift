@@ -52,6 +52,8 @@ struct StudioView: View {
                     Text(viewModel.generationRetryStatus)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(VoiceForgeTheme.tertiaryText)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(viewModel.generationRetryStatus)
                         .accessibilityIdentifier("generationRetryStatus")
                 }
                 Text("\(viewModel.sourceText.count) characters")
