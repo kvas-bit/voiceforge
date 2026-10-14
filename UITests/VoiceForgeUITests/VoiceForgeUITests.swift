@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 
 @MainActor
 final class VoiceForgeUITests: XCTestCase {
@@ -427,6 +428,67 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["sceneDirectionField"].exists)
     }
 
+    func testRealDrama3SingleGeneration() throws {
+        try requireRealModelUITests()
+        let referenceText = try String(contentsOfFile: kaydenTranscriptPath, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let startedAt = Date()
+        let before = Set(outputWaveURLs().map(\.path))
+        let app = launchRealDrama3App(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": kaydenAudioPath,
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": referenceText,
+            "VOICEFORGE_UITEST_SOURCE_TEXT": "Hey! It is finally working. [laughs] I can not believe it."
+        ])
+        let generate = app.buttons["generateButton"]
+        XCTAssertTrue(generate.waitForExistence(timeout: 20))
+        generate.click()
+
+        let playButton = app.buttons["playOutputButton"]
+        XCTAssertTrue(waitUntilEnabled(playButton, timeout: 240), "Drama 3 did not finish within 240 seconds")
+        let output = try XCTUnwrap(waitForNewPlayableWave(comparedTo: before, timeout: 10))
+        XCTAssertGreaterThan(try wavDuration(at: output), 0)
+        XCTAssertTrue(playButton.isEnabled, "The generated output playback control should be enabled")
+        print("REAL_MODEL_UITEST single_generation_elapsed_seconds=\(Date().timeIntervalSince(startedAt)) output=\(output.path)")
+    }
+
+    func testRealDrama3ConversationSceneGeneration() throws {
+        try requireRealModelUITests()
+        let startedAt = Date()
+        let before = Set(outputWaveURLs().map(\.path))
+        let app = launchRealDrama3App(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": kaydenAudioPath,
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": try String(contentsOfFile: kaydenTranscriptPath, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        ])
+        goToSidebar(app, "Conversations")
+        let sceneToggle = app.descendants(matching: .any)["conversationSceneModeToggle"]
+        XCTAssertTrue(sceneToggle.waitForExistence(timeout: 20))
+        if !app.textFields["sceneDirectionField"].exists { sceneToggle.click() }
+        XCTAssertTrue(app.textFields["sceneDirectionField"].exists)
+
+        let script = app.textViews["conversationScriptEditor"]
+        XCTAssertTrue(script.waitForExistence(timeout: 10))
+        script.click()
+        script.typeText("Kayden: Hey, it is good to be here.\nEn0: We asked over twenty different people, and they all said it was his.")
+        app.buttons["conversationImportButton"].click()
+
+        chooseAudioFile(app, buttonID: "conversationBrowseVoiceButton-0", path: kaydenAudioPath)
+        chooseAudioFile(app, buttonID: "conversationBrowseVoiceButton-1", path: en0AudioPath)
+        let en0Transcript = app.textFields["conversationReferenceTextField-1"]
+        XCTAssertTrue(en0Transcript.waitForExistence(timeout: 10))
+        replaceText(in: en0Transcript, with: "We asked over twenty different people, and they all said it was his.")
+
+        let generate = app.buttons["conversationGenerateButton"]
+        XCTAssertTrue(waitUntilEnabled(generate, timeout: 10))
+        generate.click()
+        let playScene = app.buttons["Play scene"]
+        XCTAssertTrue(waitUntilEnabled(playScene, timeout: 240), "Drama 3 scene did not finish within 240 seconds")
+        let output = try XCTUnwrap(waitForNewPlayableWave(comparedTo: before, timeout: 10, fileName: "scene.wav"))
+        XCTAssertGreaterThan(try wavDuration(at: output), 0)
+        XCTAssertTrue(playScene.isEnabled, "The generated scene playback control should be enabled")
+        print("REAL_MODEL_UITEST scene_generation_elapsed_seconds=\(Date().timeIntervalSince(startedAt)) output=\(output.path)")
+    }
+
     // MARK: - Helpers
 
     private func goToSidebar(_ app: XCUIApplication, _ label: String) {
@@ -480,6 +542,78 @@ final class VoiceForgeUITests: XCTestCase {
         launchedApp = app
         app.launch()
         return app
+    }
+
+    private var kaydenAudioPath: String { "/Users/kaviantoniovasudeo/Projects/drama3/eval/refs/kayden.wav" }
+    private var en0AudioPath: String { "/Users/kaviantoniovasudeo/Projects/drama3/eval/refs/en0.wav" }
+    private var kaydenTranscriptPath: String {
+        "/private/tmp/claude-501/-Users-kaviantoniovasudeo-Projects-db2d96b1-9dfb-45e4-8ac7-69624c52386a/scratchpad/ab/ref.txt"
+    }
+
+    private func requireRealModelUITests() throws {
+        guard ProcessInfo.processInfo.environment["VOICEFORGE_REAL_MODEL_UITEST"] == "1" else {
+            throw XCTSkip("Set VOICEFORGE_REAL_MODEL_UITEST=1 to run real Drama 3 model UI tests.")
+        }
+    }
+
+    private func launchRealDrama3App(environment: [String: String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-voiceforge.selectedTTSModel", "drama3", "-voiceforge.drama3ModelVariant", "q4"]
+        app.launchEnvironment = environment.merging([
+            "ApplePersistenceIgnoreState": "YES",
+            "VOICEFORGE_DRAMA3_MODEL_DIR": "/Users/kaviantoniovasudeo/Library/Application Support/VoiceForge/models/drama-3-q4"
+        ]) { current, _ in current }
+        launchedApp = app
+        app.launch()
+        return app
+    }
+
+    private func chooseAudioFile(_ app: XCUIApplication, buttonID: String, path: String) {
+        let chooseButton = app.buttons[buttonID]
+        XCTAssertTrue(chooseButton.waitForExistence(timeout: 10))
+        chooseButton.click()
+        let dialog = app.dialogs.firstMatch
+        XCTAssertTrue(dialog.waitForExistence(timeout: 10))
+        dialog.typeKey("g", modifierFlags: [.command, .shift])
+        let pathField = app.textFields.firstMatch
+        XCTAssertTrue(pathField.waitForExistence(timeout: 5))
+        pathField.typeText(path)
+        pathField.typeKey(.return, modifierFlags: [])
+        let openButton = app.buttons["Open"]
+        if openButton.waitForExistence(timeout: 5) { openButton.click() }
+    }
+
+    private func replaceText(in field: XCUIElement, with text: String) {
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText(text)
+    }
+
+    private func outputWaveURLs() -> [URL] {
+        let outputRoot = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/VoiceForge/outputs", isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(at: outputRoot, includingPropertiesForKeys: nil) else { return [] }
+        return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension.lowercased() == "wav" }
+    }
+
+    private func waitForNewPlayableWave(comparedTo before: Set<String>, timeout: TimeInterval, fileName: String? = nil) -> URL? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let url = outputWaveURLs().first(where: {
+                !before.contains($0.path) && (fileName == nil || $0.lastPathComponent == fileName)
+                    && ((try? wavDuration(at: $0)) ?? 0) > 0
+            }) {
+                return url
+            }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+        }
+        return nil
+    }
+
+    private func wavDuration(at url: URL) throws -> TimeInterval {
+        let file = try AVAudioFile(forReading: url)
+        guard file.fileFormat.sampleRate > 0 else { return 0 }
+        return Double(file.length) / file.fileFormat.sampleRate
     }
 
     private func waitUntilHistoryContainsEntries(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
