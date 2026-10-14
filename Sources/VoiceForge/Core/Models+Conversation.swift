@@ -4,10 +4,12 @@ import Foundation
 public struct SpeakerVoiceBinding: Equatable, Sendable, Codable {
     public var referenceAudioPath: String
     public var referenceText: String
+    public var additionalReferences: [VoiceReference]
 
-    public init(referenceAudioPath: String, referenceText: String) {
+    public init(referenceAudioPath: String, referenceText: String, additionalReferences: [VoiceReference] = []) {
         self.referenceAudioPath = referenceAudioPath
         self.referenceText = referenceText
+        self.additionalReferences = additionalReferences
     }
 }
 

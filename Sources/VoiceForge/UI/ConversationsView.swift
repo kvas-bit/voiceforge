@@ -302,7 +302,15 @@ struct ConversationsView: View {
     }
 
     private var allLinesReady: Bool {
-        viewModel.conversationLines.allSatisfy { line in
+        let linesHaveText = viewModel.conversationLines.allSatisfy {
+            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if viewModel.selectedTTSModel == TTSModel.drama3.rawValue,
+           viewModel.conversationSceneMode,
+           !viewModel.conversationSpeakerKeys.isEmpty {
+            return linesHaveText && viewModel.allSpeakersAssigned
+        }
+        return viewModel.conversationLines.allSatisfy { line in
             !line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             (((!line.referenceAudioPath.isEmpty && !line.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || !line.additionalReferences.isEmpty) && line.additionalReferences.allSatisfy { !$0.audioPath.isEmpty && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         }
@@ -344,6 +352,7 @@ struct ConversationsView: View {
                             line: line,
                             index: index,
                             isPlaybackMode: isPlaybackMode,
+                            sceneMode: viewModel.selectedTTSModel == TTSModel.drama3.rawValue && viewModel.conversationSceneMode,
                             isPlaying: isLinePlaying(index),
                             isCurrentLine: viewModel.conversationPlayer.currentLineIndex == index,
                             onPlay: { viewModel.toggleConversationLinePlayback(at: index) },
@@ -389,6 +398,7 @@ struct ConversationsView: View {
 private struct SpeakerAssignmentCard: View {
     @EnvironmentObject private var viewModel: AppViewModel
     @State private var isChoosingCustomVoice = false
+    @State private var isChoosingAdditionalVoice = false
     let speakerKey: String
 
     private var displayName: String {
@@ -431,11 +441,7 @@ private struct SpeakerAssignmentCard: View {
                 get: { selection },
                 set: { newValue in
                     if newValue == "unassigned" {
-                        viewModel.assignReferenceToSpeaker(
-                            referenceAudioPath: "",
-                            referenceText: "",
-                            speakerKey: speakerKey
-                        )
+                        viewModel.clearVoiceFromSpeaker(speakerKey)
                         return
                     }
                     guard let preset = viewModel.presets.first(where: { $0.id.uuidString == newValue }) else { return }
@@ -458,24 +464,43 @@ private struct SpeakerAssignmentCard: View {
                     isChoosingCustomVoice = true
                 }
                 .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                .accessibilityIdentifier("speakerBrowseVoiceButton-\(speakerKey)")
 
                 if !viewModel.referenceAudioPath.isEmpty {
                     Button("Use studio voice") {
-                        viewModel.assignReferenceToSpeaker(
-                            referenceAudioPath: viewModel.referenceAudioPath,
-                            referenceText: viewModel.referenceText,
-                            speakerKey: speakerKey
-                        )
+                        viewModel.selectSpeakerReference(path: viewModel.referenceAudioPath,
+                            text: viewModel.referenceText, speakerKey: speakerKey)
                     }
                     .buttonStyle(VoiceForgeSecondaryButtonStyle())
                     .disabled(viewModel.referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("speakerUseStudioVoiceButton-\(speakerKey)")
                 }
             }
 
             if let binding, viewModel.selectedTTSModel == TTSModel.drama3.rawValue {
-                Button("Auto-transcribe speaker reference") { viewModel.autoTranscribeSpeakerReference(speakerKey) }
-                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
-                    .accessibilityIdentifier("speakerAutoTranscribe-\(speakerKey)")
+                if !binding.referenceAudioPath.isEmpty {
+                    TextField("Type exactly what is said in the clip (or Auto-transcribe)", text: Binding(
+                        get: { viewModel.voiceBinding(forSpeakerKey: speakerKey)?.referenceText ?? "" },
+                        set: {
+                            viewModel.assignReferenceToSpeaker(
+                                referenceAudioPath: binding.referenceAudioPath,
+                                referenceText: $0,
+                                speakerKey: speakerKey
+                            )
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("speakerReferenceTranscriptField-\(speakerKey)")
+                    Text("An exact transcript improves voice cloning.")
+                        .font(.system(size: 10)).foregroundStyle(VoiceForgeTheme.tertiaryText)
+                    if let warnings = viewModel.speakerPrimaryReferenceDiagnostics[speakerKey], !warnings.isEmpty {
+                        Label(warnings.joined(separator: " · "), systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(VoiceForgeTheme.secondaryText)
+                    }
+                    Button("Auto-transcribe speaker reference") { viewModel.autoTranscribeSpeakerReference(speakerKey) }
+                        .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                        .accessibilityIdentifier("speakerAutoTranscribe-\(speakerKey)")
+                }
                 if let suggestion = viewModel.speakerTranscriptSuggestions[speakerKey] {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Whisper suggestion: \(suggestion.text)").font(.caption).accessibilityIdentifier("speakerTranscriptSuggestion-\(speakerKey)")
@@ -496,6 +521,57 @@ private struct SpeakerAssignmentCard: View {
                         }.font(.caption)
                     }
                 }
+
+                ForEach(binding.additionalReferences) { reference in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(URL(fileURLWithPath: reference.audioPath).lastPathComponent)
+                            .font(.caption.weight(.medium))
+                        TextField("Type exactly what is said in the clip", text: Binding(
+                            get: {
+                                viewModel.voiceBinding(forSpeakerKey: speakerKey)?.additionalReferences
+                                    .first(where: { $0.id == reference.id })?.text ?? ""
+                            },
+                            set: { viewModel.updateSpeakerReferenceTranscript($0, id: reference.id, speakerKey: speakerKey) }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("speakerAdditionalTranscriptField-\(reference.id.uuidString)")
+                        if let warnings = viewModel.speakerReferenceDiagnostics[reference.id], !warnings.isEmpty {
+                            Label(warnings.joined(separator: " · "), systemImage: "exclamationmark.triangle")
+                                .font(.caption).foregroundStyle(VoiceForgeTheme.secondaryText)
+                        }
+                        HStack {
+                            Button("Auto-transcribe") {
+                                viewModel.autoTranscribeSpeakerReference(speakerKey, referenceID: reference.id)
+                            }
+                            .accessibilityIdentifier("speakerAdditionalAutoTranscribe-\(reference.id.uuidString)")
+                            Button("Remove") { viewModel.removeSpeakerReference(id: reference.id, speakerKey: speakerKey) }
+                        }.font(.caption)
+                        if let suggestion = viewModel.speakerReferenceTranscriptSuggestions[reference.id] {
+                            Text("Whisper suggestion: \(suggestion.text)").font(.caption)
+                            if suggestion.materiallyDifferent {
+                                Text("Transcript differs (WER \(Int((suggestion.wordErrorRate ?? 0) * 100))%). Check the clip.")
+                                    .font(.caption).foregroundStyle(VoiceForgeTheme.danger)
+                            } else if let differences = suggestion.differenceSummary(comparedTo: reference.text) {
+                                Text("Possible transcript differences: \(differences)")
+                                    .font(.caption).foregroundStyle(VoiceForgeTheme.secondaryText)
+                            }
+                            HStack {
+                                Button("Use Whisper version") {
+                                    viewModel.useSpeakerReferenceTranscriptSuggestion(reference.id, speakerKey: speakerKey)
+                                }
+                                Button("Keep mine") { viewModel.keepSpeakerReferenceTranscriptSuggestion(reference.id) }
+                            }.font(.caption)
+                        }
+                    }
+                    .padding(.leading, 8)
+                }
+                Button("Add reference clip…") { isChoosingAdditionalVoice = true }
+                    .buttonStyle(VoiceForgeSecondaryButtonStyle())
+                    .accessibilityIdentifier("speakerAddReferenceButton-\(speakerKey)")
+                    .fileImporter(isPresented: $isChoosingAdditionalVoice, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
+                        guard case .success(let urls) = result, let url = urls.first else { return }
+                        viewModel.addSpeakerReference(path: url.path, speakerKey: speakerKey)
+                    }
             }
 
             Text(binding == nil ? "Not assigned" : (matchedPreset?.name ?? "Custom voice"))
@@ -523,11 +599,7 @@ private struct SpeakerAssignmentCard: View {
                 }
                 return
             }
-            viewModel.assignReferenceToSpeaker(
-                referenceAudioPath: url.path,
-                referenceText: viewModel.referenceText,
-                speakerKey: speakerKey
-            )
+            viewModel.selectSpeakerReference(path: url.path, text: viewModel.referenceText, speakerKey: speakerKey)
         }
     }
 }

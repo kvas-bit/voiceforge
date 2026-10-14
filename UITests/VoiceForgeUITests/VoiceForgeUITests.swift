@@ -428,6 +428,33 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["sceneDirectionField"].exists)
     }
 
+    func testSceneModeAssignsVoicesFromSpeakerCastRows() {
+        let app = launchApp(environment: [
+            "VOICEFORGE_UITEST_REFERENCE_AUDIO": "/tmp/voiceforge-uitest-ref.wav",
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": "Shared studio reference transcript."
+        ])
+        goToSidebar(app, "Conversations")
+        let script = app.textViews["conversationScriptEditor"]
+        XCTAssertTrue(script.waitForExistence(timeout: 10))
+        script.click()
+        script.typeText("Kayden: First line.\nEn0: Second line.")
+        app.buttons["conversationImportButton"].click()
+
+        let kaydenCastVoice = app.descendants(matching: .any)["speakerBrowseVoiceButton-kayden"]
+        let en0CastVoice = app.descendants(matching: .any)["speakerBrowseVoiceButton-en0"]
+        XCTAssertTrue(kaydenCastVoice.waitForExistence(timeout: 10), "Kayden should have one cast voice control")
+        XCTAssertTrue(en0CastVoice.waitForExistence(timeout: 10), "En0 should have one cast voice control")
+        app.buttons["speakerUseStudioVoiceButton-kayden"].click()
+        app.buttons["speakerUseStudioVoiceButton-en0"].click()
+        XCTAssertTrue(app.textFields["speakerReferenceTranscriptField-kayden"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["conversationBrowseVoiceButton-0"].exists,
+            "Scene lines inherit the cast voice and should not show a second voice picker per line")
+        XCTAssertFalse(app.descendants(matching: .any)["conversationBrowseVoiceButton-1"].exists,
+            "Scene lines inherit the cast voice and should not show a second voice picker per line")
+        XCTAssertTrue(waitUntilEnabled(app.buttons["conversationGenerateButton"], timeout: 5),
+            "The scene should be ready after each speaker receives one complete cast voice")
+    }
+
     func testRealDrama3SingleGeneration() throws {
         try requireRealModelUITests()
         let referenceText = try kaydenTranscript()
@@ -472,9 +499,9 @@ final class VoiceForgeUITests: XCTestCase {
         script.typeText("Kayden: Hey, it is good to be here.\nEn0: We asked over twenty different people, and they all said it was his.")
         app.buttons["conversationImportButton"].click()
 
-        chooseAudioFile(app, buttonID: "conversationBrowseVoiceButton-0", path: kaydenAudioPath)
-        chooseAudioFile(app, buttonID: "conversationBrowseVoiceButton-1", path: en0AudioPath)
-        let en0Transcript = app.textFields["conversationReferenceTextField-1"]
+        chooseAudioFile(app, buttonID: "speakerBrowseVoiceButton-kayden", path: kaydenAudioPath)
+        chooseAudioFile(app, buttonID: "speakerBrowseVoiceButton-en0", path: en0AudioPath)
+        let en0Transcript = app.textFields["speakerReferenceTranscriptField-en0"]
         XCTAssertTrue(en0Transcript.waitForExistence(timeout: 10))
         replaceText(in: en0Transcript, with: "We asked over twenty different people, and they all said it was his.")
 
@@ -577,7 +604,7 @@ final class VoiceForgeUITests: XCTestCase {
     }
 
     private func chooseAudioFile(_ app: XCUIApplication, buttonID: String, path: String) {
-        let chooseButton = app.buttons[buttonID]
+        let chooseButton = app.descendants(matching: .any)[buttonID]
         XCTAssertTrue(chooseButton.waitForExistence(timeout: 10))
         chooseButton.click()
         // NSOpenPanel shows as a dialog or as a sheet depending on presentation.

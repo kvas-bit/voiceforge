@@ -10,6 +10,7 @@ struct ConversationLineRow: View {
     let line: ConversationLine
     let index: Int
     let isPlaybackMode: Bool
+    let sceneMode: Bool
     let isPlaying: Bool
     let isCurrentLine: Bool
     let onPlay: () -> Void
@@ -74,7 +75,13 @@ struct ConversationLineRow: View {
 
     private var editingRow: some View {
         VStack(alignment: .leading, spacing: 12) {
-            voicePicker
+            if sceneMode, let speakerKey = line.speakerKey {
+                Text("Cast voice · \(viewModel.conversationSpeakerDisplayNames[speakerKey] ?? speakerKey)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(VoiceForgeTheme.secondaryText)
+            } else {
+                voicePicker
+            }
             textEditor
         }
     }

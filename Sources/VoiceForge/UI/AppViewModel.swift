@@ -100,6 +100,9 @@ final class AppViewModel: ObservableObject {
     @Published var mainTranscriptSuggestion: TranscriptSuggestion?
     @Published var additionalTranscriptSuggestions: [UUID: TranscriptSuggestion] = [:]
     @Published var speakerTranscriptSuggestions: [String: TranscriptSuggestion] = [:]
+    @Published var speakerReferenceTranscriptSuggestions: [UUID: TranscriptSuggestion] = [:]
+    @Published var speakerReferenceDiagnostics: [UUID: [String]] = [:]
+    @Published var speakerPrimaryReferenceDiagnostics: [String: [String]] = [:]
     @Published var generateTakeCount = 1
     @Published var takeOutputURLs: [URL] = []
     @Published var selectedTakeIndex = 0
@@ -1133,8 +1136,84 @@ final class AppViewModel: ObservableObject {
         for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
             conversationLines[i].referenceAudioPath = referenceAudioPath
             conversationLines[i].referenceText = referenceText
+        }
+    }
+
+    func clearVoiceFromSpeaker(_ speakerKey: String) {
+        for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
+            conversationLines[i].referenceAudioPath = ""
+            conversationLines[i].referenceText = ""
             conversationLines[i].additionalReferences = []
         }
+        speakerPrimaryReferenceDiagnostics.removeValue(forKey: speakerKey)
+    }
+
+    func selectSpeakerReference(path: String, text: String, speakerKey: String) {
+        assignReferenceToSpeaker(referenceAudioPath: path, referenceText: text, speakerKey: speakerKey)
+        Task {
+            do {
+                let info = try await generationService.inspectReference(audio: path, text: text)
+                speakerPrimaryReferenceDiagnostics[speakerKey] = info.warnings
+            } catch {
+                speakerPrimaryReferenceDiagnostics[speakerKey] = [error.localizedDescription]
+            }
+        }
+    }
+
+    func addSpeakerReference(path: String, speakerKey: String) {
+        let reference = VoiceReference(audioPath: path, text: "")
+        for i in conversationLines.indices where conversationLines[i].speakerKey == speakerKey {
+            conversationLines[i].additionalReferences.append(reference)
+        }
+        Task {
+            do {
+                let info = try await generationService.inspectReference(audio: path)
+                speakerReferenceDiagnostics[reference.id] = info.warnings
+            } catch {
+                speakerReferenceDiagnostics[reference.id] = [error.localizedDescription]
+            }
+        }
+    }
+
+    func updateSpeakerReferenceTranscript(_ text: String, id: UUID, speakerKey: String) {
+        for lineIndex in conversationLines.indices where conversationLines[lineIndex].speakerKey == speakerKey {
+            guard let referenceIndex = conversationLines[lineIndex].additionalReferences.firstIndex(where: { $0.id == id }) else { continue }
+            conversationLines[lineIndex].additionalReferences[referenceIndex].text = text
+        }
+    }
+
+    func removeSpeakerReference(id: UUID, speakerKey: String) {
+        for lineIndex in conversationLines.indices where conversationLines[lineIndex].speakerKey == speakerKey {
+            conversationLines[lineIndex].additionalReferences.removeAll { $0.id == id }
+        }
+        speakerReferenceDiagnostics.removeValue(forKey: id)
+        speakerReferenceTranscriptSuggestions.removeValue(forKey: id)
+    }
+
+    func autoTranscribeSpeakerReference(_ speakerKey: String, referenceID: UUID) {
+        guard let reference = voiceBinding(forSpeakerKey: speakerKey)?.additionalReferences.first(where: { $0.id == referenceID }) else { return }
+        Task {
+            do {
+                let text = try await generationService.transcribe(audio: reference.audioPath)
+                let info = reference.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil : try await generationService.inspectReference(audio: reference.audioPath, text: reference.text)
+                let suggestion = TranscriptSuggestion(text: text, wordErrorRate: info?.wordErrorRate)
+                if reference.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    updateSpeakerReferenceTranscript(text, id: referenceID, speakerKey: speakerKey)
+                    speakerReferenceTranscriptSuggestions.removeValue(forKey: referenceID)
+                } else {
+                    speakerReferenceTranscriptSuggestions[referenceID] = suggestion
+                }
+            } catch { referenceActionMessage = error.localizedDescription }
+        }
+    }
+
+    func useSpeakerReferenceTranscriptSuggestion(_ id: UUID, speakerKey: String) {
+        guard let suggestion = speakerReferenceTranscriptSuggestions.removeValue(forKey: id) else { return }
+        updateSpeakerReferenceTranscript(suggestion.text, id: id, speakerKey: speakerKey)
+    }
+    func keepSpeakerReferenceTranscriptSuggestion(_ id: UUID) {
+        speakerReferenceTranscriptSuggestions.removeValue(forKey: id)
     }
 
     func setCharacterDescription(_ value: String, speakerKey: String) {
@@ -1151,8 +1230,9 @@ final class AppViewModel: ObservableObject {
     /// line — `nil` if that speaker has no lines or hasn't been assigned yet.
     func voiceBinding(forSpeakerKey speakerKey: String) -> SpeakerVoiceBinding? {
         guard let line = conversationLines.first(where: { $0.speakerKey == speakerKey }),
-              !line.referenceAudioPath.isEmpty else { return nil }
-        return SpeakerVoiceBinding(referenceAudioPath: line.referenceAudioPath, referenceText: line.referenceText)
+              !line.referenceAudioPath.isEmpty || !line.additionalReferences.isEmpty else { return nil }
+        return SpeakerVoiceBinding(referenceAudioPath: line.referenceAudioPath, referenceText: line.referenceText,
+                                   additionalReferences: line.additionalReferences)
     }
 
     /// True once every speaker introduced by the last import has a complete
