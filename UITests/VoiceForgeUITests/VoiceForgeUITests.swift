@@ -616,8 +616,10 @@ final class VoiceForgeUITests: XCTestCase {
         XCTAssertTrue(pathField.waitForExistence(timeout: 5))
         pathField.typeText(path)
         pathField.typeKey(.return, modifierFlags: [])
-        let openButton = app.buttons["Open"]
-        if openButton.waitForExistence(timeout: 5) { openButton.click() }
+        // Scope to the picker: other "Open" buttons can exist elsewhere in the window.
+        let openButton = dialog.buttons["Open"].firstMatch
+        if openButton.waitForExistence(timeout: 5), openButton.isEnabled { openButton.click() }
+        XCTAssertTrue(dialog.waitForNonExistence(timeout: 10), "file picker did not close")
     }
 
     private func replaceText(in field: XCUIElement, with text: String) {
