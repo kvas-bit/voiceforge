@@ -95,9 +95,29 @@ public struct PersistentEvent: Codable, Sendable {
     let wer: Double?
     public let attempt: Int?
     public let reason: String?
-    public let attempts: [PersistentAttempt]?
+    public let attempts: PersistentAttempts?
 }
 public struct PersistentAttempt: Codable, Sendable { public let attempt: Int?; public let reason: String? }
+
+/// The engine reports attempts as `{"attempts": [...], "final_settings": ...}`; older
+/// helpers and tests send a bare array. Accept both so a `done` event always decodes.
+public struct PersistentAttempts: Codable, Sendable {
+    public let items: [PersistentAttempt]
+    private enum Keys: String, CodingKey { case attempts }
+    public init(items: [PersistentAttempt]) { self.items = items }
+    public init(from decoder: Decoder) throws {
+        if let list = try? decoder.singleValueContainer().decode([PersistentAttempt].self) {
+            items = list
+        } else {
+            let c = try decoder.container(keyedBy: Keys.self)
+            items = (try? c.decode([PersistentAttempt].self, forKey: .attempts)) ?? []
+        }
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer(); try c.encode(items)
+    }
+    public var count: Int { items.count }
+}
 
 // MARK: - Shebang parser
 
@@ -342,7 +362,25 @@ actor PersistentGenerationCoordinator {
         let line = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         guard line.hasPrefix("EVENT:"),
               let jd = String(line.dropFirst(6)).data(using: .utf8) else { return nil }
-        return try jsonDecoder.decode(PersistentEvent.self, from: jd)
+        return try Self.decodeEvent(jd, decoder: jsonDecoder)
+    }
+
+    /// Decodes an event, dropping any field the app cannot decode instead of dropping the
+    /// whole event: losing a terminal `done`/`error` would leave a render spinning forever.
+    static func decodeEvent(_ data: Data, decoder jsonDecoder: JSONDecoder = JSONDecoder()) throws -> PersistentEvent {
+        if let event = try? jsonDecoder.decode(PersistentEvent.self, from: data) { return event }
+        guard var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return try jsonDecoder.decode(PersistentEvent.self, from: data)
+        }
+        for _ in 0..<object.count {
+            let trimmed = try JSONSerialization.data(withJSONObject: object)
+            do { return try jsonDecoder.decode(PersistentEvent.self, from: trimmed) }
+            catch let DecodingError.typeMismatch(_, context), let DecodingError.dataCorrupted(context) {
+                guard let key = context.codingPath.first?.stringValue, key != "event", key != "id" else { throw DecodingError.dataCorrupted(context) }
+                object.removeValue(forKey: key)
+            }
+        }
+        return try jsonDecoder.decode(PersistentEvent.self, from: data)
     }
 
     private func encodeLine(_ req: PersistentRequest) -> Data {

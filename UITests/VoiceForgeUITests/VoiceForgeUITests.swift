@@ -430,7 +430,7 @@ final class VoiceForgeUITests: XCTestCase {
 
     func testRealDrama3SingleGeneration() throws {
         try requireRealModelUITests()
-        let referenceText = try String(contentsOfFile: kaydenTranscriptPath, encoding: .utf8)
+        let referenceText = try kaydenTranscript()
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let startedAt = Date()
         let before = Set(outputWaveURLs().map(\.path))
@@ -457,7 +457,7 @@ final class VoiceForgeUITests: XCTestCase {
         let before = Set(outputWaveURLs().map(\.path))
         let app = launchRealDrama3App(environment: [
             "VOICEFORGE_UITEST_REFERENCE_AUDIO": kaydenAudioPath,
-            "VOICEFORGE_UITEST_REFERENCE_TEXT": try String(contentsOfFile: kaydenTranscriptPath, encoding: .utf8)
+            "VOICEFORGE_UITEST_REFERENCE_TEXT": try kaydenTranscript()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         ])
         goToSidebar(app, "Conversations")
@@ -544,11 +544,19 @@ final class VoiceForgeUITests: XCTestCase {
         return app
     }
 
-    private var kaydenAudioPath: String { "/Users/kaviantoniovasudeo/Projects/drama3/eval/refs/kayden.wav" }
-    private var en0AudioPath: String { "/Users/kaviantoniovasudeo/Projects/drama3/eval/refs/en0.wav" }
-    private var kaydenTranscriptPath: String {
-        "/private/tmp/claude-501/-Users-kaviantoniovasudeo-Projects-db2d96b1-9dfb-45e4-8ac7-69624c52386a/scratchpad/ab/ref.txt"
+    // Real-model fixtures live outside the repo (personal voice clips); override with env vars.
+    private var realModelRefsDir: String {
+        // The test runner is sandboxed, so NSHomeDirectory() points at its container.
+        let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+        return ProcessInfo.processInfo.environment["VOICEFORGE_REAL_MODEL_REFS"] ?? home + "/Projects/drama3/eval/refs"
     }
+    private func kaydenTranscript() throws -> String {
+        if let text = ProcessInfo.processInfo.environment["VOICEFORGE_REAL_KAYDEN_TEXT"], !text.isEmpty { return text }
+        return try String(contentsOfFile: kaydenTranscriptPath, encoding: .utf8)
+    }
+    private var kaydenAudioPath: String { realModelRefsDir + "/kayden.wav" }
+    private var en0AudioPath: String { realModelRefsDir + "/en0.wav" }
+    private var kaydenTranscriptPath: String { realModelRefsDir + "/kayden.txt" }
 
     private func requireRealModelUITests() throws {
         guard ProcessInfo.processInfo.environment["VOICEFORGE_REAL_MODEL_UITEST"] == "1" else {
@@ -572,8 +580,10 @@ final class VoiceForgeUITests: XCTestCase {
         let chooseButton = app.buttons[buttonID]
         XCTAssertTrue(chooseButton.waitForExistence(timeout: 10))
         chooseButton.click()
-        let dialog = app.dialogs.firstMatch
-        XCTAssertTrue(dialog.waitForExistence(timeout: 10))
+        // NSOpenPanel shows as a dialog or as a sheet depending on presentation.
+        let sheet = app.sheets.firstMatch
+        let dialog = app.dialogs.firstMatch.waitForExistence(timeout: 5) ? app.dialogs.firstMatch : sheet
+        XCTAssertTrue(dialog.waitForExistence(timeout: 10), "file picker did not appear")
         dialog.typeKey("g", modifierFlags: [.command, .shift])
         let pathField = app.textFields.firstMatch
         XCTAssertTrue(pathField.waitForExistence(timeout: 5))
@@ -590,7 +600,9 @@ final class VoiceForgeUITests: XCTestCase {
     }
 
     private func outputWaveURLs() -> [URL] {
-        let outputRoot = FileManager.default.homeDirectoryForCurrentUser
+        // Sandboxed runner: resolve the real home, not the runner container.
+        let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+        let outputRoot = URL(fileURLWithPath: home)
             .appendingPathComponent("Library/Application Support/VoiceForge/outputs", isDirectory: true)
         guard let enumerator = FileManager.default.enumerator(at: outputRoot, includingPropertiesForKeys: nil) else { return [] }
         return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension.lowercased() == "wav" }
